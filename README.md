@@ -6,7 +6,8 @@ A credits-only Free Fire player auction: one auctioneer (the app owner) posts au
 
 ## Quick start (demo)
 
-- **Players / Managers** — log in with **Google** (email) or **Phone** (10-digit number + OTP). First time, you're asked your name, then you choose Player or Manager. *Demo note: the Google/OTP steps are simulated in the browser — no real Google popup or SMS yet; connect a backend (e.g. Firebase Auth) for the real thing.*
+- **Players / Managers** — log in with **Google** (real popup via Firebase) or **Phone** (SMS OTP via Firebase, `+91` numbers). First time, you're asked your name, then you choose Player or Manager. If Firebase can't load, the app falls back to demo mode (email entry + on-screen OTP).
+- **Firebase setup (owner):** in the Firebase console enable Authentication → Google and Phone, and add `pyhco538poorna7-design.github.io` under Authentication → Settings → Authorized domains. The free Spark plan only delivers SMS to **test numbers** (Authentication → Sign-in method → Phone → Phone numbers for testing); real SMS requires the Blaze plan.
 - **Auctioneer** — click "Auctioneer login", default passcode `owner123` (change it in the Dashboard).
 - Flow: Auctioneer posts an auction → registered users press **Participate** → auctioneer starts players in the Live Room → managers bid before the timer ends → top bid wins.
 

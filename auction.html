@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Free Fire Auction</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <style>
   :root{
     --bg:#0d1117; --panel:#161b27; --panel2:#1c2333; --line:#2a3247;
@@ -106,6 +108,18 @@ const COSMETICS = [
 const FRAME_CLASS={f_neon:"frame-neon", f_fire:"frame-fire", f_gold:"frame-gold"};
 const EFFECT_EMOJI={e_confetti:"🎉", e_flame:"🔥", e_bolt:"⚡"};
 const DEFAULTS = {credits:1000, base:50, minRaise:10, timer:30, squad:5};
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDTIBYfxGwPXK5Qesrt9xP2TTo1eO9P1gAg",
+  authDomain: "poorna-69047.firebaseapp.com",
+  projectId: "poorna-69047",
+  storageBucket: "poorna-69047.firebaseapp.com",
+  messagingSenderId: "252498363727",
+  appId: "1:252498363727:web:51595175215164b946313a"
+};
+let fb = null;
+try{
+  if(typeof firebase !== "undefined"){ firebase.initializeApp(FIREBASE_CONFIG); fb = firebase.auth(); }
+}catch(e){ fb = null; }
 
 /* ---------- local "database" (collections) ---------- */
 const DB = {
@@ -277,15 +291,46 @@ function showAuth(m){
   document.getElementById("name_box").style.display="none";
   if(m==="google"){
     box.innerHTML=`<h3>Sign in with Google</h3>
-      <label>Google email</label><input id="au_email" type="email" placeholder="you@gmail.com">
-      <button class="btn" style="margin-top:8px" onclick="authGoogle()">Continue</button>
-      <p class="muted" style="margin-top:6px">Demo sign-in — switches to the real Google popup once a backend is connected.</p>`;
+      ${fb
+        ?`<div class="muted" style="margin-bottom:8px">Opens the real Google sign-in popup.</div>
+          <button class="btn blue" onclick="doGoogle()">Open Google sign-in</button>`
+        :`<label>Google email</label><input id="au_email" type="email" placeholder="you@gmail.com">
+          <button class="btn" style="margin-top:8px" onclick="authGoogle()">Continue</button>
+          <p class="muted" style="margin-top:6px">Demo mode — Firebase not loaded.</p>`}`;
   } else {
     box.innerHTML=`<h3>Sign in with Phone</h3>
       <label>Phone number (10 digits)</label><input id="au_phone" inputmode="numeric" placeholder="10-digit number">
       <button class="btn" style="margin-top:8px" onclick="sendOtp()">Send OTP</button>
+      <div id="recaptcha-container"></div>
       <div id="otp_box"></div>`;
   }
+}
+function fbDomainHelp(){
+  return "Add pyhco538poorna7-design.github.io in Firebase Console → Authentication → Settings → Authorized domains, then try again.";
+}
+async function doGoogle(){
+  try{
+    const res=await fb.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    afterFirebase(res.user);
+  }catch(e){
+    flash(e.code==="auth/unauthorized-domain" ? fbDomainHelp()
+      : e.code==="auth/popup-closed-by-user" ? "Google popup closed before finishing."
+      : "Google sign-in failed: "+(e.code||e.message), "err");
+  }
+}
+function afterFirebase(u){
+  const ident=u.uid;
+  const existing=users()[ident];
+  if(existing){
+    saveUser(ident, existing.role, existing.name);
+    view = existing.role==="auctioneer" ? "dash" : (existing.role ? "live" : "home");
+    render();
+    return;
+  }
+  pendingAuth={method:"firebase", ident};
+  document.getElementById("name_box").style.display="block";
+  document.getElementById("au_name").value=u.displayName||"";
+  window.scrollTo(0,document.body.scrollHeight);
 }
 function authGoogle(){
   const email=(document.getElementById("au_email").value||"").trim().toLowerCase();
@@ -293,15 +338,42 @@ function authGoogle(){
   afterIdent("google", email);
 }
 function sendOtp(){
-  const ph=(document.getElementById("au_phone").value||"").replace(/\D/g,"");
-  if(!/^\d{10}$/.test(ph)) return flash("Enter a 10-digit phone number.", "err");
-  pendingAuth={method:"phone", ident:ph, otp:String(Math.floor(100000+Math.random()*900000))};
+  const raw=(document.getElementById("au_phone").value||"").replace(/\D/g,"");
+  const digits = raw.length===12 && raw.startsWith("91") ? raw.slice(2) : raw;
+  if(!/^\d{10}$/.test(digits)) return flash("Enter a 10-digit phone number.", "err");
+  if(fb){
+    try{ if(window.recaptchaVerifier) window.recaptchaVerifier.clear(); }catch(e){}
+    window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier("recaptcha-container", {size:"invisible"});
+    fb.signInWithPhoneNumber("+91"+digits, window.recaptchaVerifier)
+      .then(c=>{
+        window.confirmationResult=c;
+        pendingAuth={method:"phone-fb", ident:digits};
+        document.getElementById("otp_box").innerHTML=`<div class="msg good">OTP sent by SMS to +91 ${digits}.</div>
+          <label>Enter OTP</label><input id="au_otp" inputmode="numeric" placeholder="6-digit OTP">
+          <button class="btn" style="margin-top:8px" onclick="verifyOtp()">Verify &amp; Continue</button>`;
+      })
+      .catch(e=>{
+        flash(e.code==="auth/unauthorized-domain" ? fbDomainHelp()
+          : e.code==="auth/invalid-phone-number" ? "That phone number looks invalid."
+          : e.code==="auth/too-many-requests" ? "Too many attempts — wait a bit and retry."
+          : "SMS failed: "+(e.code||e.message)+". (Free Firebase plan only delivers to test numbers — add yours under Authentication → Sign-in method → Phone.)", "err");
+        try{ if(window.recaptchaVerifier) window.recaptchaVerifier.clear(); }catch(x){}
+      });
+    return;
+  }
+  pendingAuth={method:"phone", ident:digits, otp:String(Math.floor(100000+Math.random()*900000))};
   document.getElementById("otp_box").innerHTML=`<div class="msg good">Demo OTP (no SMS backend yet): <b>${pendingAuth.otp}</b></div>
     <label>Enter OTP</label><input id="au_otp" inputmode="numeric" placeholder="6-digit OTP">
     <button class="btn" style="margin-top:8px" onclick="verifyOtp()">Verify &amp; Continue</button>`;
 }
 function verifyOtp(){
   const v=(document.getElementById("au_otp").value||"").trim();
+  if(pendingAuth && pendingAuth.method==="phone-fb"){
+    window.confirmationResult.confirm(v)
+      .then(res=>afterFirebase(res.user))
+      .catch(()=>flash("Wrong OTP — check the SMS and try again.", "err"));
+    return;
+  }
   if(!pendingAuth || v!==pendingAuth.otp) return flash("Wrong OTP.", "err");
   afterIdent("phone", pendingAuth.ident);
 }
