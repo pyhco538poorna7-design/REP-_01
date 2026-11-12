@@ -60,6 +60,18 @@
   .msg.good{background:#12301e; color:#7fe3a4}
   a{color:var(--acc2)}
   .empty{text-align:center; color:var(--mut); padding:24px}
+  #toast{position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:99; width:min(92vw,480px)}
+  #toast .msg{box-shadow:0 4px 18px #000a; margin:0}
+  .frame-neon{border:2px solid #00e5ff !important; box-shadow:0 0 14px #00e5ff88}
+  .frame-fire{border:2px solid #ff5c1a !important; box-shadow:0 0 14px #ff5c1a99}
+  .frame-gold{border:2px solid #ffd700 !important; box-shadow:0 0 16px #ffd70077}
+  .fx-emoji{display:inline-block; margin-left:6px; animation:fpop 1s infinite alternate}
+  @keyframes fpop{from{transform:scale(1)}to{transform:scale(1.35)}}
+  .glow{text-shadow:0 0 10px var(--acc2), 0 0 20px var(--acc)}
+  .rank{display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--panel2); border:1px solid var(--line); font-size:13px; font-weight:700}
+  .rank.r1{background:#ffd700; color:#000; border-color:#ffd700}
+  .rank.r2{background:#c0c0c0; color:#000; border-color:#c0c0c0}
+  .rank.r3{background:#cd7f32; color:#000; border-color:#cd7f32}
 </style>
 </head>
 <body>
@@ -68,6 +80,7 @@
   <div class="chip" id="userchip"></div>
 </header>
 <main id="app"></main>
+<div id="toast"></div>
 
 <script>
 "use strict";
@@ -80,6 +93,18 @@ const PERKS = [
   {id:"spotlight", name:"Spotlight",    cost:100, desc:"Your team is pinned first on the Teams page"},
   {id:"color",     name:"Team Color",   cost:30,  desc:"Choose your team banner color"}
 ];
+const COSMETICS = [
+  {id:"f_neon", type:"frame", name:"Neon Frame",  cost:120, desc:"Glowing neon border on your team card"},
+  {id:"f_fire", type:"frame", name:"Fire Frame",  cost:180, desc:"Blazing orange border on your team card"},
+  {id:"f_gold", type:"frame", name:"Gold Frame",  cost:250, desc:"Luxury gold border on your team card"},
+  {id:"e_confetti", type:"effect", name:"Confetti Burst", cost:100, emoji:"🎉", desc:"Animated confetti beside your team name"},
+  {id:"e_flame",   type:"effect", name:"Flame Trail",   cost:150, emoji:"🔥", desc:"Animated flames beside your team name"},
+  {id:"e_bolt",    type:"effect", name:"Lightning",     cost:130, emoji:"⚡", desc:"Animated lightning beside your team name"},
+  {id:"x_title", type:"extra", name:"Custom Title", cost:80, desc:"A tagline under your team name"},
+  {id:"x_glow",  type:"extra", name:"Name Glow",    cost:90, desc:"Your team name glows on the Teams page"}
+];
+const FRAME_CLASS={f_neon:"frame-neon", f_fire:"frame-fire", f_gold:"frame-gold"};
+const EFFECT_EMOJI={e_confetti:"🎉", e_flame:"🔥", e_bolt:"⚡"};
 const DEFAULTS = {credits:1000, base:50, minRaise:10, timer:30, squad:5};
 
 /* ---------- local "database" (collections) ---------- */
@@ -106,10 +131,11 @@ function logout(){ DB.del("session"); render(); }
 
 /* ---------- domain helpers ---------- */
 function perkCost(mgr){ return (mgr.perks||[]).reduce((s,id)=>{ const p=PERKS.find(p=>p.id===id); return s+(p?p.cost:0); },0); }
+function cosmeticCost(mgr){ return (mgr.items||[]).reduce((s,id)=>{ const c=COSMETICS.find(x=>x.id===id); return s+(c?c.cost:0); },0); }
 function balance(mgrId){
   const cfg=getConfig(); const m=managers()[mgrId]; if(!cfg||!m) return 0;
   const spent = Object.values(sold()).filter(s=>s.mgr===mgrId).reduce((s,x)=>s+x.price,0);
-  return (cfg.credits||0) - spent - perkCost(m);
+  return (cfg.credits||0) - spent - perkCost(m) - cosmeticCost(m);
 }
 function squadOf(mgrId){ return Object.entries(sold()).filter(([pid,s])=>s.mgr===mgrId).map(([pid,s])=>({pid, ...players()[pid]||{}, price:s.price})); }
 function inPool(pid){
@@ -168,12 +194,12 @@ async function botVerify(imageDataUrl, expectedName, expectedUid){
 const app = document.getElementById("app");
 let view = "home";
 function esc(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function flash(msg, kind){ DB.set("flash", {msg, kind, t:Date.now()}); render(); }
-function takeFlash(){
-  const f = DB.get("flash", null); if(!f) return "";
-  DB.del("flash");
-  if(Date.now()-f.t > 4000) return "";
-  return `<div class="msg ${f.kind==="err"?"err":"good"}">${esc(f.msg)}</div>`;
+let toastTimer=null;
+function flash(msg, kind){
+  const t=document.getElementById("toast"); if(!t) return;
+  t.innerHTML=`<div class="msg ${kind==="err"?"err":"good"}">${esc(msg)}</div>`;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ t.innerHTML=""; }, 4000);
 }
 function fmtWhen(ts){
   if(!ts) return "—";
@@ -191,25 +217,25 @@ function render(){
   } else {
     chip.innerHTML = `<span class="muted">Not logged in</span>`;
   }
-  app.innerHTML = takeFlash() + (s ? navFor(s.role) + bodyFor(s) : loginView());
+  app.innerHTML = (s ? navFor(s.role) + bodyFor(s) : loginView());
   if(view==="live") tick();
 }
 
 function navFor(role){
   const t = {
-    auctioneer:[["dash","Dashboard"],["post","Post Auction"],["live","Live Room"],["aplayers","Players"],["teams","Teams"]],
-    manager:[["live","Live Room"],["myteam","My Team"],["rewards","Rewards"],["teams","Teams"]],
-    player:[["profile","My Profile"],["live","Live Room"],["teams","Teams"]]
-  }[role] || [["home","Home"],["live","Live Room"],["teams","Teams"]];
+    auctioneer:[["dash","Dashboard"],["post","Post Auction"],["live","Live Room"],["aplayers","Players"],["teams","Teams"],["board","Leaderboard"]],
+    manager:[["home","Home"],["live","Live Room"],["myteam","My Team"],["rewards","Rewards"],["teams","Teams"],["board","Leaderboard"]],
+    player:[["home","Home"],["profile","My Profile"],["live","Live Room"],["teams","Teams"],["board","Leaderboard"]]
+  }[role] || [["home","Home"],["live","Live Room"],["teams","Teams"],["board","Leaderboard"]];
   return `<nav>${t.map(([v,l])=>`<button class="${view===v?"on":""}" onclick="go('${v}')">${l}</button>`).join("")}</nav>`;
 }
 function go(v){ view=v; render(); }
 function bodyFor(s){
   const map = {
-    auctioneer:{dash:vDashboard, post:vPost, live:vLive, aplayers:vPlayers, teams:vTeams},
-    manager:{live:vLive, myteam:vMyTeam, rewards:vRewards, teams:vTeams},
-    player:{profile:vProfile, live:vLive, teams:vTeams}
-  }[s.role] || {home:vHome, live:vLive, teams:vTeams};
+    auctioneer:{dash:vDashboard, post:vPost, live:vLive, aplayers:vPlayers, teams:vTeams, board:vBoard},
+    manager:{home:vHome, live:vLive, myteam:vMyTeam, rewards:vRewards, teams:vTeams, board:vBoard},
+    player:{home:vHome, profile:vProfile, live:vLive, teams:vTeams, board:vBoard}
+  }[s.role] || {home:vHome, live:vLive, teams:vTeams, board:vBoard};
   return (map[view] || vHome)(s);
 }
 
@@ -344,8 +370,9 @@ function registerPlayer(){
   ps[s.id]={ign, uid, roles, status:"approved", verified:false, by:"bot", locked:false, ts:Date.now()};
   DB.set("players", ps);
   setRole("player");
-  flash("Registered! Now verify your profile.", "good");
-  view="profile"; render();
+  view="home";
+  flash("✅ Registration complete! Welcome to the auction.", "good");
+  render();
 }
 function registerManager(){
   const s=session(); if(!s || s.role==="auctioneer") return flash("Log in with Google or Phone first.", "err");
@@ -353,11 +380,12 @@ function registerManager(){
   if(!team) return flash("Enter a team name.", "err");
   if(Object.values(managers()).some(m=>m.team.toLowerCase()===team.toLowerCase())) return flash("Team name already taken.", "err");
   const ms=managers();
-  ms[s.id]={name:users()[s.id].name, team, perks:[], color:"#ff5c1a", ts:Date.now()};
+  ms[s.id]={name:users()[s.id].name, team, perks:[], items:[], frame:null, effect:null, title:"", color:"#ff5c1a", ts:Date.now()};
   DB.set("managers", ms);
   setRole("manager");
-  flash("Welcome, manager! Press Participate when an auction is posted.", "good");
-  view="live"; render();
+  view="home";
+  flash("✅ Registration complete! Welcome to the auction.", "good");
+  render();
 }
 
 /* ----- notification card ----- */
@@ -413,8 +441,71 @@ function vHome(s){
       <p class="muted">Every manager gets ${DEFAULTS.credits} credits. The auctioneer posts an auction, players join, then the live room opens. Bid at least the base price (${DEFAULTS.base}) and raise by at least ${DEFAULTS.minRaise}. When the timer ends, the top bid wins the player.</p>
     </div>`;
   }
+  const cfg=getConfig();
+  const m=managers()[s.id]||{};
+  let status="";
+  if(s.role==="player"){
+    const p=players()[s.id]||{};
+    status=`<div class="grid">
+      <div class="stat"><b>${p.ign?esc(p.ign):"—"}</b><span> In-game name</span></div>
+      <div class="stat"><b>${p.verified?"✅":"⏳"}</b><span> ${p.verified?"Verified":"Verification pending"}</span></div>
+      <div class="stat"><b>${playerPoints(s.id)}</b><span> Individual points</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="go('live')">🔨 Live Room</button>
+      ${!p.verified?`<button class="btn sec" onclick="go('profile')">🤖 Verify my profile</button>`:""}
+    </div>`;
+  } else if(s.role==="manager"){
+    const sq=squadOf(s.id);
+    status=`<div class="grid">
+      <div class="stat"><b>${esc(m.team)}</b><span> Team</span></div>
+      <div class="stat"><b>${balance(s.id)}</b><span> Credits left</span></div>
+      <div class="stat"><b>${sq.length}/${cfg?.squad??5}</b><span> Squad</span></div>
+      <div class="stat"><b>${teamPoints(s.id)}</b><span> Team points</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="go('live')">🔨 Live Room</button>
+      <button class="btn sec" onclick="go('myteam')">🛡 My Team</button>
+      <button class="btn sec" onclick="go('rewards')">🎁 Rewards</button>
+    </div>`;
+  }
   return noticeCard(s) + `<div class="card"><h2>Hi, ${esc(u.name||s.id)} 👋</h2>
-    <p class="muted">Use the tabs above. The Live Room shows the current auction state.</p></div>`;
+    <p class="muted">You're registered as <b>${s.role==="player"?"a Player":"a Team Manager"}</b>. ${participationOpen()?"An auction is open — press Participate!":"Use the tabs above to move around."}</p>
+    <div style="margin-top:10px">${status}</div>
+  </div>`;
+}
+
+/* ----- leaderboard ----- */
+function teamPoints(mid){ return squadOf(mid).reduce((s,p)=>s+p.price,0); }
+function playerPoints(pid){ return sold()[pid]?.price || 0; }
+function vBoard(){
+  const mgrs=Object.entries(managers())
+    .map(([id,m])=>({id, ...m, pts:teamPoints(id), count:squadOf(id).length}))
+    .sort((a,b)=>b.pts-a.pts || a.team.localeCompare(b.team));
+  const pls=Object.entries(players())
+    .map(([id,p])=>({id, ...p, pts:playerPoints(id), team: sold()[id] ? (managers()[sold()[id].mgr]?.team||null) : null}))
+    .sort((a,b)=>b.pts-a.pts || a.ign.localeCompare(b.ign));
+  const rankCls=i=>i<3?` r${i+1}`:"";
+  return `
+  ${noticeCard(session())}
+  <div class="card"><h2>🏆 Leaderboard</h2><p class="muted">Team points = total credits spent on your squad. Individual points = the price a player was sold for.</p></div>
+  <div class="card"><h2>🛡 Top Managers — team points</h2>
+    ${mgrs.length?mgrs.map((m,i)=>`<div class="bidrow">
+      <span><span class="rank${rankCls(i)}">${i+1}</span>
+      <b>${esc(m.team)}</b>${(m.perks||[]).includes("gold")?' <span class="pill acc">🥇</span>':""}
+      <span class="muted"> · ${esc(m.name)} · ${m.count} player(s)</span></span>
+      <b>${m.pts} pts</b>
+    </div>`).join(""):'<p class="muted">No managers yet.</p>'}
+  </div>
+  <div class="card"><h2>🎯 Top Players — individual points</h2>
+    ${pls.length?pls.map((p,i)=>`<div class="bidrow">
+      <span><span class="rank${rankCls(i)}">${i+1}</span>
+      <b>${esc(p.ign)}</b> <span class="muted">${esc(p.uid)}</span>
+      ${p.team?`<span class="pill">→ ${esc(p.team)}</span>`:""}
+      ${p.verified?'<span class="pill ok">✔</span>':""}</span>
+      <b>${p.pts} pts</b>
+    </div>`).join(""):'<p class="muted">No players yet.</p>'}
+  </div>`;
 }
 
 /* ----- auctioneer: dashboard ----- */
@@ -704,6 +795,9 @@ function vMyTeam(s){
       <label>Banner color</label>
       <div class="row"><input id="mt_color" type="color" value="${esc(m.color||"#ff5c1a")}"><button class="btn" onclick="saveColor()">Save</button></div>`
     : `<p class="muted">Buy the <b>Team Color</b> perk in Rewards to unlock your banner color.</p>`}
+    ${(m.items||[]).includes("x_title") ? `
+      <label>Custom title (shown under your team name)</label>
+      <div class="row"><input id="mt_title" value="${esc(m.title||"")}" placeholder="e.g. Champions 2026"><button class="btn" onclick="saveTitle()">Save</button></div>` : ""}
     <h3>Danger zone</h3>
     <p class="muted">Deleting your registration removes your team. Your sold players return to the pool.</p>
     <button class="btn bad" style="margin-top:8px" onclick="deleteManager()">🗑 Delete my registration</button>
@@ -712,6 +806,10 @@ function vMyTeam(s){
 function saveColor(){
   const s=session(); const ms=managers(); ms[s.id].color=document.getElementById("mt_color").value;
   DB.set("managers", ms); flash("Color saved.","good");
+}
+function saveTitle(){
+  const s=session(); const ms=managers(); ms[s.id].title=(document.getElementById("mt_title").value||"").trim().slice(0,40);
+  DB.set("managers", ms); flash("Title saved.","good");
 }
 function deleteManager(){
   const s=session();
@@ -728,19 +826,60 @@ function deleteManager(){
 }
 
 /* ----- manager: rewards ----- */
+function rewardCard(p, owned, bal, action){
+  return `<div class="card"><h2>${esc(p.name)}</h2><p class="muted">${esc(p.desc)}</p>
+    <p style="margin:8px 0">Cost: <b style="color:var(--acc2)">${p.cost}</b> credits</p>
+    ${owned?action:`<button class="btn" onclick="buyCosmetic('${p.id}')" ${bal<p.cost?"disabled":""}>Buy</button>`}
+  </div>`;
+}
 function vRewards(s){
   const m=managers()[s.id]; if(!m) return `<div class="card"><div class="empty">Register as a manager first.</div></div>`;
   const bal=balance(s.id);
-  return `
-  ${noticeCard(s)}
-  <div class="card"><h2>Rewards</h2><p class="muted">Spend credits. Balance: <b style="color:var(--acc2)">${bal}</b></p></div>
-  <div class="grid">${PERKS.map(p=>{
-    const owned=(m.perks||[]).includes(p.id);
+  const owned=(m.items||[]);
+  const wear=(id,label)=>`<button class="btn ok" onclick="equipCosmetic('${id}')">${label}</button>`;
+  const frames=COSMETICS.filter(c=>c.type==="frame").map(c=>rewardCard(c, owned.includes(c.id), bal,
+    m.frame===c.id ? wear(c.id,"Remove frame") : wear(c.id,"Wear"))).join("");
+  const effects=COSMETICS.filter(c=>c.type==="effect").map(c=>rewardCard(c, owned.includes(c.id), bal,
+    m.effect===c.id ? wear(c.id,"Remove effect") : wear(c.id,"Wear"))).join("");
+  const extras=COSMETICS.filter(c=>c.type==="extra").map(c=>rewardCard(c, owned.includes(c.id), bal, '<span class="pill ok">✔ Active</span>')).join("");
+  const perkCards=PERKS.map(p=>{
+    const o=(m.perks||[]).includes(p.id);
     return `<div class="card"><h2>${esc(p.name)}</h2><p class="muted">${esc(p.desc)}</p>
       <p style="margin:8px 0">Cost: <b style="color:var(--acc2)">${p.cost}</b> credits</p>
-      ${owned?'<span class="pill ok">✔ Owned</span>':`<button class="btn" onclick="buyPerk('${p.id}')" ${bal<p.cost?"disabled":""}>Buy</button>`}
+      ${o?'<span class="pill ok">✔ Owned</span>':`<button class="btn" onclick="buyPerk('${p.id}')" ${bal<p.cost?"disabled":""}>Buy</button>`}
     </div>`;
-  }).join("")}</div>`;
+  }).join("");
+  return `
+  ${noticeCard(s)}
+  <div class="card"><h2>🎁 Rewards</h2><p class="muted">Spend credits. Balance: <b style="color:var(--acc2)">${bal}</b></p></div>
+  <h3 style="margin:4px 0 8px">🖼 Profile frames</h3>
+  <div class="grid">${frames}</div>
+  <h3 style="margin:14px 0 8px">✨ Effects</h3>
+  <div class="grid">${effects}</div>
+  <h3 style="margin:14px 0 8px">➕ More</h3>
+  <div class="grid">${extras}</div>
+  <h3 style="margin:14px 0 8px">🔨 Auction perks</h3>
+  <div class="grid">${perkCards}</div>`;
+}
+function buyCosmetic(id){
+  const s=session(); const c=COSMETICS.find(x=>x.id===id); if(!c) return;
+  const ms=managers(); const m=ms[s.id];
+  if((m.items||[]).includes(id)) return;
+  if(balance(s.id) < c.cost) return flash("Not enough credits.","err");
+  m.items=[...(m.items||[]), id];
+  if(c.type==="frame") m.frame=id;
+  if(c.type==="effect") m.effect=id;
+  DB.set("managers", ms);
+  flash(`${c.name} purchased and equipped!`,"good");
+}
+function equipCosmetic(id){
+  const s=session(); const c=COSMETICS.find(x=>x.id===id); if(!c) return;
+  const ms=managers(); const m=ms[s.id];
+  if(c.type==="frame") m.frame = m.frame===id ? null : id;
+  if(c.type==="effect") m.effect = m.effect===id ? null : id;
+  DB.set("managers", ms);
+  flash(m.frame===id||m.effect===id ? `${c.name} equipped.` : `${c.name} removed.`, "good");
+  render();
 }
 function buyPerk(id){
   const s=session(); const p=PERKS.find(x=>x.id===id); if(!p) return;
@@ -826,13 +965,15 @@ function vTeams(){
   ${list.length?`<div class="grid">${list.map(([id,m])=>{
     const squad=squadOf(id);
     const spent=squad.reduce((s2,p)=>s2+p.price,0);
-    return `<div class="teamcard">
+    const fx=m.effect?`<span class="fx-emoji">${EFFECT_EMOJI[m.effect]||""}</span>`:"";
+    return `<div class="teamcard ${m.frame?FRAME_CLASS[m.frame]||"":""}">
       <div class="teambanner" style="background:${esc(m.color||"#ff5c1a")}"></div>
       <div class="teambody">
-        <b>${esc(m.team)}</b>
+        <b class="${(m.items||[]).includes("x_glow")?"glow":""}">${esc(m.team)}${fx}</b>
+        ${(m.items||[]).includes("x_title")&&m.title?`<p class="muted" style="font-style:italic">${esc(m.title)}</p>`:""}
         ${(m.perks||[]).includes("gold")?' <span class="pill acc">🥇 Gold</span>':""}
         ${(m.perks||[]).includes("spotlight")?' <span class="pill acc">📌 Spotlight</span>':""}
-        <p class="muted">${esc(m.name)} · ${squad.length}/${cfg?.squad??5} players · spent ${spent}</p>
+        <p class="muted">${esc(m.name)} · ${squad.length}/${cfg?.squad??5} players · ${spent} pts</p>
         ${squad.map(p=>`<div class="bidrow"><span>${esc(p.ign)} <span class="muted">${(p.roles||[])[0]||""}</span></span><b>${p.price}</b></div>`).join("")||'<p class="muted" style="padding:6px 0">No players yet.</p>'}
       </div>
     </div>`;
