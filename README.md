@@ -6,8 +6,8 @@ A credits-only Free Fire player auction: one auctioneer (the app owner) posts au
 
 ## Quick start (demo)
 
+- **Players / Managers** — log in with **Google** (email) or **Phone** (10-digit number + OTP). First time, you're asked your name, then you choose Player or Manager. *Demo note: the Google/OTP steps are simulated in the browser — no real Google popup or SMS yet; connect a backend (e.g. Firebase Auth) for the real thing.*
 - **Auctioneer** — click "Auctioneer login", default passcode `owner123` (change it in the Dashboard).
-- **Players / Managers** — click "New here? Register", pick Player or Manager, then log in with the Account ID you chose.
 - Flow: Auctioneer posts an auction → registered users press **Participate** → auctioneer starts players in the Live Room → managers bid before the timer ends → top bid wins.
 
 ## What's implemented (from [SPEC.md](SPEC.md))

@@ -200,7 +200,7 @@ function navFor(role){
     auctioneer:[["dash","Dashboard"],["post","Post Auction"],["live","Live Room"],["aplayers","Players"],["teams","Teams"]],
     manager:[["live","Live Room"],["myteam","My Team"],["rewards","Rewards"],["teams","Teams"]],
     player:[["profile","My Profile"],["live","Live Room"],["teams","Teams"]]
-  }[role] || [["home","Home"]];
+  }[role] || [["home","Home"],["live","Live Room"],["teams","Teams"]];
   return `<nav>${t.map(([v,l])=>`<button class="${view===v?"on":""}" onclick="go('${v}')">${l}</button>`).join("")}</nav>`;
 }
 function go(v){ view=v; render(); }
@@ -209,22 +209,30 @@ function bodyFor(s){
     auctioneer:{dash:vDashboard, post:vPost, live:vLive, aplayers:vPlayers, teams:vTeams},
     manager:{live:vLive, myteam:vMyTeam, rewards:vRewards, teams:vTeams},
     player:{profile:vProfile, live:vLive, teams:vTeams}
-  }[s.role] || {};
+  }[s.role] || {home:vHome, live:vLive, teams:vTeams};
   return (map[view] || vHome)(s);
 }
 
 /* ----- login / registration ----- */
+let pendingAuth = null;
 function loginView(){
   return `
   <div class="card">
     <h2>Welcome</h2>
     <p class="muted">Credits only — no real money. One auctioneer runs the auction; managers bid on players with credits.</p>
-    <h3>Log in</h3>
-    <label>Your name (the one you registered with)</label>
-    <input id="li_id" placeholder="e.g. Poorna">
-    <div class="row" style="margin-top:10px">
-      <button class="btn" onclick="doLogin()">Log in</button>
-      <button class="btn sec" onclick="go2('join')">New here? Register</button>
+    <h3>Log in or sign up</h3>
+    <div class="row">
+      <button class="btn blue" onclick="showAuth('google')">Continue with Google</button>
+      <button class="btn ok" onclick="showAuth('phone')">Continue with Phone</button>
+    </div>
+    <div id="auth_box" style="display:none"></div>
+    <div id="name_box" style="display:none">
+      <h3>What's your name?</h3>
+      <label>This is how you'll appear in the app</label>
+      <input id="au_name" placeholder="your name">
+      <button class="btn" style="margin-top:8px" onclick="finishSignup()">Continue</button>
+    </div>
+    <div class="row" style="margin-top:14px">
       <button class="btn sec" onclick="showAuctioneer()">Auctioneer login</button>
     </div>
     <div id="auct_box" style="display:none">
@@ -233,30 +241,63 @@ function loginView(){
       <button class="btn" style="margin-top:8px" onclick="doAuctioneer()">Enter as Auctioneer</button>
       <p class="muted" style="margin-top:6px">Default passcode: <b>owner123</b> — change it in the Dashboard.</p>
     </div>
-  </div>
-
-  <div class="card" id="join_card" style="display:none">
-    <h2>Join — what you need</h2>
-    <p class="muted">Players: in-game name, UID (8–12 digits) and 1 to 4 roles. Managers: your name and a unique team name. Registration is always open; for each auction you press <b>Participate</b>.</p>
-    <h3>How it works</h3>
-    <p class="muted">Every manager gets ${DEFAULTS.credits} credits. The auctioneer posts an auction, players join, then the live room opens. Bid at least the base price (${DEFAULTS.base}) and raise by at least ${DEFAULTS.minRaise}. When the timer ends, the top bid wins the player.</p>
-    <h3>I am a…</h3>
-    <div class="row">
-      <button class="btn blue" onclick="regForm('player')">Player</button>
-      <button class="btn ok" onclick="regForm('manager')">Team Manager</button>
-    </div>
-    <div id="reg_box"></div>
   </div>`;
 }
 function showAuctioneer(){ document.getElementById("auct_box").style.display="block"; }
-function go2(v){ document.getElementById("join_card").style.display="block"; window.scrollTo(0,document.body.scrollHeight); }
-function doLogin(){
-  const id = (document.getElementById("li_id").value||"").trim();
-  const u = users()[id];
-  if(!u){ flash("No account with that ID. Register first.", "err"); return; }
-  saveUser(id, u.role, u.name);
-  view = u.role==="auctioneer" ? "dash" : "live";
-  render();
+function showAuth(m){
+  pendingAuth=null;
+  const box=document.getElementById("auth_box");
+  box.style.display="block";
+  document.getElementById("name_box").style.display="none";
+  if(m==="google"){
+    box.innerHTML=`<h3>Sign in with Google</h3>
+      <label>Google email</label><input id="au_email" type="email" placeholder="you@gmail.com">
+      <button class="btn" style="margin-top:8px" onclick="authGoogle()">Continue</button>
+      <p class="muted" style="margin-top:6px">Demo sign-in — switches to the real Google popup once a backend is connected.</p>`;
+  } else {
+    box.innerHTML=`<h3>Sign in with Phone</h3>
+      <label>Phone number (10 digits)</label><input id="au_phone" inputmode="numeric" placeholder="10-digit number">
+      <button class="btn" style="margin-top:8px" onclick="sendOtp()">Send OTP</button>
+      <div id="otp_box"></div>`;
+  }
+}
+function authGoogle(){
+  const email=(document.getElementById("au_email").value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return flash("Enter a valid email.", "err");
+  afterIdent("google", email);
+}
+function sendOtp(){
+  const ph=(document.getElementById("au_phone").value||"").replace(/\D/g,"");
+  if(!/^\d{10}$/.test(ph)) return flash("Enter a 10-digit phone number.", "err");
+  pendingAuth={method:"phone", ident:ph, otp:String(Math.floor(100000+Math.random()*900000))};
+  document.getElementById("otp_box").innerHTML=`<div class="msg good">Demo OTP (no SMS backend yet): <b>${pendingAuth.otp}</b></div>
+    <label>Enter OTP</label><input id="au_otp" inputmode="numeric" placeholder="6-digit OTP">
+    <button class="btn" style="margin-top:8px" onclick="verifyOtp()">Verify &amp; Continue</button>`;
+}
+function verifyOtp(){
+  const v=(document.getElementById("au_otp").value||"").trim();
+  if(!pendingAuth || v!==pendingAuth.otp) return flash("Wrong OTP.", "err");
+  afterIdent("phone", pendingAuth.ident);
+}
+function afterIdent(method, ident){
+  const u=users()[ident];
+  if(u){
+    saveUser(ident, u.role, u.name);
+    view = u.role==="auctioneer" ? "dash" : (u.role ? "live" : "home");
+    render();
+    return;
+  }
+  pendingAuth={method, ident, otp:null};
+  document.getElementById("name_box").style.display="block";
+  window.scrollTo(0,document.body.scrollHeight);
+}
+function finishSignup(){
+  const name=(document.getElementById("au_name").value||"").trim();
+  if(!pendingAuth) return flash("Verify your email or phone first.", "err");
+  if(name.length<2) return flash("Enter your name.", "err");
+  saveUser(pendingAuth.ident, null, name);
+  flash(`Welcome, ${name}! Now choose Player or Manager.`, "good");
+  view="home"; render();
 }
 function doAuctioneer(){
   const auth = DB.get("auth", {pass:"owner123"});
@@ -269,10 +310,11 @@ function doAuctioneer(){
 }
 function regForm(kind){
   const box = document.getElementById("reg_box");
+  const s=session(); const myName=(users()[s.id]?.name||"");
   if(kind==="player"){
     box.innerHTML = `
       <h3>Player registration</h3>
-      <label>In-game name (3+ chars) — you'll log in with this</label><input id="rg_ign" placeholder="IGN">
+      <label>In-game name (3+ chars)</label><input id="rg_ign" placeholder="IGN" value="${esc(myName)}">
       <label>UID (8 to 12 digits, unique)</label><input id="rg_uid" placeholder="UID" inputmode="numeric">
       <label>Roles (pick 1 to 4)</label>
       <div class="roles">${ROLES.map(r=>`<label style="display:inline-block;margin:3px"><input type="checkbox" class="rg_role" value="${r}"> ${r}</label>`).join("")}</div>
@@ -280,45 +322,41 @@ function regForm(kind){
       <p class="muted" style="margin-top:6px">After registering, upload your Free Fire profile screenshot in My Profile for bot verification.</p>`;
   } else {
     box.innerHTML = `
-      <h3>Manager registration</h3>
-      <label>Your name — you'll log in with this</label><input id="rg_name" placeholder="name">
+      <h3>Manager registration — ${esc(myName)}</h3>
       <label>Team name (unique)</label><input id="rg_team" placeholder="team name">
       <button class="btn" style="margin-top:10px" onclick="registerManager()">Register</button>`;
   }
 }
-function freeLoginId(base){
-  let id=base, n=2;
-  while(users()[id]){ id=base+n; n++; }
-  return id;
+function setRole(role){
+  const s=session(); const u=users(); u[s.id].role=role; DB.set("users", u);
+  DB.set("session", {id:s.id, role});
 }
 function registerPlayer(){
+  const s=session(); if(!s || s.role==="auctioneer") return flash("Log in with Google or Phone first.", "err");
   const ign=(document.getElementById("rg_ign").value||"").trim();
   const uid=(document.getElementById("rg_uid").value||"").trim();
   const roles=[...document.querySelectorAll(".rg_role:checked")].map(c=>c.value);
-  const id=freeLoginId(ign);
   if(ign.length<3) return flash("Name must be 3+ characters.", "err");
   if(!/^\d{8,12}$/.test(uid)) return flash("UID must be 8 to 12 digits.", "err");
   if(Object.values(players()).some(p=>p.uid===uid)) return flash("UID already registered.", "err");
   if(roles.length<1 || roles.length>4) return flash("Pick 1 to 4 roles.", "err");
   const ps=players();
-  ps[id]={ign, uid, roles, status:"approved", verified:false, by:"bot", locked:false, ts:Date.now()};
+  ps[s.id]={ign, uid, roles, status:"approved", verified:false, by:"bot", locked:false, ts:Date.now()};
   DB.set("players", ps);
-  saveUser(id, "player", ign);
-  flash(`Registered as ${id}! Log in with this name. Now verify your profile.`, "good");
+  setRole("player");
+  flash("Registered! Now verify your profile.", "good");
   view="profile"; render();
 }
 function registerManager(){
-  const name=(document.getElementById("rg_name").value||"").trim();
+  const s=session(); if(!s || s.role==="auctioneer") return flash("Log in with Google or Phone first.", "err");
   const team=(document.getElementById("rg_team").value||"").trim();
-  const id=freeLoginId(name);
-  if(name.length<2) return flash("Enter your name.", "err");
   if(!team) return flash("Enter a team name.", "err");
   if(Object.values(managers()).some(m=>m.team.toLowerCase()===team.toLowerCase())) return flash("Team name already taken.", "err");
   const ms=managers();
-  ms[id]={name, team, perks:[], color:"#ff5c1a", ts:Date.now()};
+  ms[s.id]={name:users()[s.id].name, team, perks:[], color:"#ff5c1a", ts:Date.now()};
   DB.set("managers", ms);
-  saveUser(id, "manager", name);
-  flash(`Welcome, ${id}! Log in with this name. Press Participate when an auction is posted.`, "good");
+  setRole("manager");
+  flash("Welcome, manager! Press Participate when an auction is posted.", "good");
   view="live"; render();
 }
 
@@ -342,6 +380,7 @@ function noticeCard(s){
 }
 function participate(){
   const s=session(); const cfg=getConfig();
+  if(!s.role) return flash("Choose Player or Manager on the Home tab first.", "err");
   if(!participationOpen()) return flash("Participation is closed.", "err");
   if(s.role==="player"){ const p=players()[s.id]; if(!p) return flash("Register first.","err"); if(cfg.verifiedOnly!==false && !p.verified) return flash("You must be verified to participate.","err"); }
   if(s.role==="manager"){ if(!managers()[s.id]) return flash("Register first.","err"); }
@@ -355,9 +394,26 @@ function withdraw(){
   flash("Withdrawn from this auction.","good");
 }
 
-/* ----- home (registered users) ----- */
+/* ----- home ----- */
 function vHome(s){
-  return noticeCard(s) + `<div class="card"><h2>Hi, ${esc(users()[s.id]?.name||s.id)} 👋</h2>
+  const u=users()[s.id]||{};
+  if(!s.role){
+    return `${noticeCard(s)}
+    <div class="card"><h2>Welcome, ${esc(u.name||s.id)} 👋</h2>
+      <p class="muted">One last step — choose what you are:</p>
+      <div class="row">
+        <button class="btn blue" onclick="regForm('player')">I'm a Player</button>
+        <button class="btn ok" onclick="regForm('manager')">I'm a Team Manager</button>
+      </div>
+      <div id="reg_box"></div>
+    </div>
+    <div class="card"><h2>What you need</h2>
+      <p class="muted">Players: in-game name, UID (8–12 digits) and 1 to 4 roles. Managers: a unique team name. Registration is always open; for each auction you press <b>Participate</b>.</p>
+      <h3>How it works</h3>
+      <p class="muted">Every manager gets ${DEFAULTS.credits} credits. The auctioneer posts an auction, players join, then the live room opens. Bid at least the base price (${DEFAULTS.base}) and raise by at least ${DEFAULTS.minRaise}. When the timer ends, the top bid wins the player.</p>
+    </div>`;
+  }
+  return noticeCard(s) + `<div class="card"><h2>Hi, ${esc(u.name||s.id)} 👋</h2>
     <p class="muted">Use the tabs above. The Live Room shows the current auction state.</p></div>`;
 }
 
@@ -499,7 +555,8 @@ function removePlayer(id){
   const ps=players(); delete ps[id]; DB.set("players", ps);
   const js=joins(); delete js[id]; DB.set("joins", js);
   const sd=sold(); delete sd[id]; DB.set("sold", sd);
-  const u=users(); delete u[id]; DB.set("users", u);
+  const u=users(); if(u[id]){ u[id].role=null; DB.set("users", u); }
+  if(session()?.id===id){ DB.set("session", {id, role:null}); view="home"; }
   flash("Player removed.","good");
 }
 
@@ -663,9 +720,11 @@ function deleteManager(){
   const sd=sold(); Object.keys(sd).forEach(pid=>{ if(sd[pid].mgr===s.id) delete sd[pid]; }); DB.set("sold", sd);
   const bs=bids(); delete bs[s.id]; DB.set("bids", bs);
   const js=joins(); delete js[s.id]; DB.set("joins", js);
-  const u=users(); delete u[s.id]; DB.set("users", u);
-  DB.del("session");
-  flash("Registration deleted.","good");
+  const u=users(); if(u[s.id]){ u[s.id].role=null; DB.set("users", u); }
+  DB.set("session", {id:s.id, role:null});
+  view="home";
+  flash("Registration deleted. You can register again anytime.","good");
+  render();
 }
 
 /* ----- manager: rewards ----- */
@@ -750,8 +809,8 @@ function deletePlayer(){
   const s=session();
   if(!confirm("Delete your registration?")) return;
   removePlayer(s.id);
-  DB.del("session");
-  flash("Registration deleted.","good");
+  flash("Registration deleted. You can register again anytime.","good");
+  render();
 }
 
 /* ----- teams (everyone) ----- */
