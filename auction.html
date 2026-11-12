@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Free Fire Auction</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b27; --panel2:#1c2333; --line:#2a3247;
+    --txt:#e6e9f2; --mut:#8b93a7; --acc:#ff5c1a; --acc2:#ffb01a;
+    --ok:#2ecc71; --bad:#ff4d5e; --blue:#3b82f6;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; min-height:100vh}
+  header{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10}
+  header h1{font-size:18px}
+  header h1 span{color:var(--acc)}
+  .chip{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--mut)}
+  .chip b{color:var(--txt)}
+  main{max-width:860px; margin:0 auto; padding:16px}
+  nav{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px}
+  nav button{background:var(--panel2); color:var(--mut); border:1px solid var(--line); padding:8px 14px; border-radius:20px; cursor:pointer; font-size:13px}
+  nav button.on{background:var(--acc); color:#fff; border-color:var(--acc)}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px}
+  .card h2{font-size:16px; margin-bottom:10px}
+  .card h3{font-size:14px; margin:12px 0 6px; color:var(--acc2)}
+  .muted{color:var(--mut); font-size:13px}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .row > *{flex:1 1 140px}
+  label{display:block; font-size:12px; color:var(--mut); margin:8px 0 4px}
+  input,select{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--txt); padding:9px 10px; border-radius:8px; font-size:14px}
+  input[type=checkbox]{width:auto}
+  button.btn{background:var(--acc); color:#fff; border:0; padding:10px 16px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600}
+  button.btn.sec{background:var(--panel2); color:var(--txt); border:1px solid var(--line)}
+  button.btn.blue{background:var(--blue)}
+  button.btn.ok{background:var(--ok)}
+  button.btn.bad{background:var(--bad)}
+  button.btn:disabled{opacity:.45; cursor:not-allowed}
+  .pill{display:inline-block; padding:2px 10px; border-radius:12px; font-size:12px; background:var(--panel2); border:1px solid var(--line); color:var(--mut)}
+  .pill.ok{color:var(--ok); border-color:var(--ok)}
+  .pill.bad{color:var(--bad); border-color:var(--bad)}
+  .pill.acc{color:var(--acc2); border-color:var(--acc2)}
+  .notice{background:linear-gradient(90deg,#2b1a0e,#1c2333); border:1px solid var(--acc2); border-radius:12px; padding:14px 16px; margin-bottom:14px}
+  .notice b{color:var(--acc2)}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px}
+  .stat{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px}
+  .stat b{font-size:22px; display:block}
+  .stat span{font-size:12px; color:var(--mut)}
+  .teamcard{border-radius:12px; overflow:hidden; border:1px solid var(--line); background:var(--panel)}
+  .teambanner{height:8px}
+  .teambody{padding:12px}
+  .bidrow{display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line); font-size:14px}
+  .bidrow:last-child{border-bottom:0}
+  .big{font-size:26px; font-weight:700}
+  .timer{font-size:34px; font-weight:800; text-align:center; padding:8px}
+  .timer.hot{color:var(--bad)}
+  .roles span{display:inline-block; background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:2px 8px; font-size:12px; margin:2px 3px 2px 0}
+  .msg{padding:10px 12px; border-radius:8px; font-size:13px; margin:8px 0}
+  .msg.err{background:#3a1418; color:#ff9aa5}
+  .msg.good{background:#12301e; color:#7fe3a4}
+  a{color:var(--acc2)}
+  .empty{text-align:center; color:var(--mut); padding:24px}
+  #toast{position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:99; width:min(92vw,480px)}
+  #toast .msg{box-shadow:0 4px 18px #000a; margin:0}
+  .frame-neon{border:2px solid #00e5ff !important; box-shadow:0 0 14px #00e5ff88}
+  .frame-fire{border:2px solid #ff5c1a !important; box-shadow:0 0 14px #ff5c1a99}
+  .frame-gold{border:2px solid #ffd700 !important; box-shadow:0 0 16px #ffd70077}
+  .fx-emoji{display:inline-block; margin-left:6px; animation:fpop 1s infinite alternate}
+  @keyframes fpop{from{transform:scale(1)}to{transform:scale(1.35)}}
+  .glow{text-shadow:0 0 10px var(--acc2), 0 0 20px var(--acc)}
+  .rank{display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--panel2); border:1px solid var(--line); font-size:13px; font-weight:700}
+  .rank.r1{background:#ffd700; color:#000; border-color:#ffd700}
+  .rank.r2{background:#c0c0c0; color:#000; border-color:#c0c0c0}
+  .rank.r3{background:#cd7f32; color:#000; border-color:#cd7f32}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 <span>Free Fire</span> Auction</h1>
+  <div class="chip" id="userchip"></div>
+</header>
+<main id="app"></main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------- constants ---------- */
+const ROLES = ["IGL","Rusher","Supporter","Sniper","Secondary Rusher","Zone Survivor","Clutcher","Anchor","Flanker","Assaulter"];
+const PERKS = [
+  {id:"priority",  name:"Priority Bid", cost:80,  desc:"Wins tie-breaks when bids are equal"},
+  {id:"gold",      name:"Gold Badge",   cost:50,  desc:"Gold badge beside your team name"},
+  {id:"spotlight", name:"Spotlight",    cost:100, desc:"Your team is pinned first on the Teams page"},
+  {id:"color",     name:"Team Color",   cost:30,  desc:"Choose your team banner color"}
+];
+const COSMETICS = [
+  {id:"f_neon", type:"frame", name:"Neon Frame",  cost:120, desc:"Glowing neon border on your team card"},
+  {id:"f_fire", type:"frame", name:"Fire Frame",  cost:180, desc:"Blazing orange border on your team card"},
+  {id:"f_gold", type:"frame", name:"Gold Frame",  cost:250, desc:"Luxury gold border on your team card"},
+  {id:"e_confetti", type:"effect", name:"Confetti Burst", cost:100, emoji:"🎉", desc:"Animated confetti beside your team name"},
+  {id:"e_flame",   type:"effect", name:"Flame Trail",   cost:150, emoji:"🔥", desc:"Animated flames beside your team name"},
+  {id:"e_bolt",    type:"effect", name:"Lightning",     cost:130, emoji:"⚡", desc:"Animated lightning beside your team name"},
+  {id:"x_title", type:"extra", name:"Custom Title", cost:80, desc:"A tagline under your team name"},
+  {id:"x_glow",  type:"extra", name:"Name Glow",    cost:90, desc:"Your team name glows on the Teams page"}
+];
+const FRAME_CLASS={f_neon:"frame-neon", f_fire:"frame-fire", f_gold:"frame-gold"};
+const EFFECT_EMOJI={e_confetti:"🎉", e_flame:"🔥", e_bolt:"⚡"};
+const DEFAULTS = {credits:1000, base:50, minRaise:10, timer:30, squad:5};
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDTIBYfxGwPXK5Qesrt9xP2TTo1eO9P1gAg",
+  authDomain: "poorna-69047.firebaseapp.com",
+  projectId: "poorna-69047",
+  storageBucket: "poorna-69047.firebaseapp.com",
+  messagingSenderId: "252498363727",
+  appId: "1:252498363727:web:51595175215164b946313a"
+};
+let fb = null;
+try{
+  if(typeof firebase !== "undefined"){ firebase.initializeApp(FIREBASE_CONFIG); fb = firebase.auth(); }
+}catch(e){ fb = null; }
+
+/* ---------- local "database" (collections) ---------- */
+const DB = {
+  get(k, def){ try{ const v = JSON.parse(localStorage.getItem("ffa_"+k)); return v===null||v===undefined ? def : v; }catch(e){ return def; } },
+  set(k, v){ localStorage.setItem("ffa_"+k, JSON.stringify(v)); },
+  del(k){ localStorage.removeItem("ffa_"+k); }
+};
+const getConfig = () => DB.get("config", null);
+const players  = () => DB.get("players", {});
+const managers = () => DB.get("managers", {});
+const joins    = () => DB.get("joins", {});
+const getLive  = () => DB.get("live", null);
+const bids     = () => DB.get("bids", {});
+const sold     = () => DB.get("sold", {});
+const users    = () => DB.get("users", {});
+const session  = () => DB.get("session", null);
+
+function saveUser(id, role, name){
+  const u = users(); u[id] = {role, name}; DB.set("users", u);
+  DB.set("session", {id, role});
+}
+function logout(){ DB.del("session"); render(); }
+
+/* ---------- domain helpers ---------- */
+function perkCost(mgr){ return (mgr.perks||[]).reduce((s,id)=>{ const p=PERKS.find(p=>p.id===id); return s+(p?p.cost:0); },0); }
+function cosmeticCost(mgr){ return (mgr.items||[]).reduce((s,id)=>{ const c=COSMETICS.find(x=>x.id===id); return s+(c?c.cost:0); },0); }
+function balance(mgrId){
+  const cfg=getConfig(); const m=managers()[mgrId]; if(!cfg||!m) return 0;
+  const spent = Object.values(sold()).filter(s=>s.mgr===mgrId).reduce((s,x)=>s+x.price,0);
+  return (cfg.credits||0) - spent - perkCost(m) - cosmeticCost(m);
+}
+function squadOf(mgrId){ return Object.entries(sold()).filter(([pid,s])=>s.mgr===mgrId).map(([pid,s])=>({pid, ...players()[pid]||{}, price:s.price})); }
+function inPool(pid){
+  const cfg=getConfig(); if(!cfg||!cfg.postedAt) return false;
+  const p=players()[pid]; if(!p) return false;
+  if(sold()[pid]) return false;
+  const j=joins()[pid]; if(!j || j.round!==cfg.postedAt) return false;
+  if(cfg.verifiedOnly!==false && !p.verified) return false;
+  return true;
+}
+function pool(){ return Object.keys(players()).filter(inPool); }
+function topBid(pid){
+  const all = Object.entries(bids()).filter(([,b])=>b.playerId===pid)
+    .map(([mid,b])=>({...b, mid, priority:(managers()[mid]?.perks||[]).includes("priority")}));
+  if(!all.length) return null;
+  all.sort((a,b)=> b.amount-a.amount || (b.priority?1:0)-(a.priority?1:0) || a.ts-b.ts);
+  return all[0];
+}
+function participationOpen(){
+  const cfg=getConfig(); if(!cfg||!cfg.postedAt) return false;
+  if(cfg.regOpen===false) return false;
+  return Date.now() < new Date(cfg.when).getTime();
+}
+function normName(s){ return (s||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+function nameMatches(a,b){ const x=normName(a), y=normName(b); return x && y && (x===y || x.includes(y) || y.includes(x)); }
+
+/* ---------- verification bot (optional AI vision) ----------
+   The key is entered at runtime and stored only in this browser. */
+async function botVerify(imageDataUrl, expectedName, expectedUid){
+  const key = localStorage.getItem("ffa_aikey") || "";
+  if(!key) return {ok:false, reason:"nokey"};
+  const prompt = 'This is a screenshot of a Free Fire player profile. Read the player nickname and the numeric UID exactly as shown. Reply with only JSON: {"name":"","uid":"","is_free_fire_profile":true}';
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+    body: JSON.stringify({
+      model:"gpt-4o-mini",
+      messages:[{role:"user", content:[
+        {type:"text", text:prompt},
+        {type:"image_url", image_url:{url:imageDataUrl}}
+      ]}],
+      max_tokens:200
+    })
+  });
+  if(!res.ok) return {ok:false, reason:"api"};
+  const data = await res.json();
+  let txt = data.choices?.[0]?.message?.content || "";
+  txt = txt.replace(/```json|```/g,"").trim();
+  let out; try{ out = JSON.parse(txt); }catch(e){ return {ok:false, reason:"parse"}; }
+  const uidOk = String(out.uid)===String(expectedUid);
+  const nameOk = out.is_free_fire_profile!==false && nameMatches(out.name, expectedName);
+  return {ok: uidOk && nameOk, read:{name:out.name, uid:out.uid}, reason: uidOk ? "name" : "uid"};
+}
+
+/* ---------- UI helpers ---------- */
+const app = document.getElementById("app");
+let view = "home";
+function esc(s){ return String(s??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+let toastTimer=null;
+function flash(msg, kind){
+  const t=document.getElementById("toast"); if(!t) return;
+  t.innerHTML=`<div class="msg ${kind==="err"?"err":"good"}">${esc(msg)}</div>`;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ t.innerHTML=""; }, 4000);
+}
+function fmtWhen(ts){
+  if(!ts) return "—";
+  const d = new Date(ts);
+  return d.toLocaleString(undefined,{dateStyle:"medium", timeStyle:"short"});
+}
+
+/* ---------- views ---------- */
+function render(){
+  const s = session();
+  const chip = document.getElementById("userchip");
+  if(s){
+    const u = users()[s.id] || {};
+    chip.innerHTML = `<b>${esc(u.name||s.id)}</b> <span class="pill acc">${esc(s.role)}</span> <button class="btn sec" style="padding:4px 10px;font-size:12px" onclick="logout()">Logout</button>`;
+  } else {
+    chip.innerHTML = `<span class="muted">Not logged in</span>`;
+  }
+  app.innerHTML = (s ? navFor(s.role) + bodyFor(s) : loginView());
+  if(view==="live") tick();
+}
+
+function navFor(role){
+  const t = {
+    auctioneer:[["dash","Dashboard"],["post","Post Auction"],["live","Live Room"],["aplayers","Players"],["teams","Teams"],["board","Leaderboard"]],
+    manager:[["home","Home"],["live","Live Room"],["myteam","My Team"],["rewards","Rewards"],["teams","Teams"],["board","Leaderboard"]],
+    player:[["home","Home"],["profile","My Profile"],["live","Live Room"],["teams","Teams"],["board","Leaderboard"]]
+  }[role] || [["home","Home"],["live","Live Room"],["teams","Teams"],["board","Leaderboard"]];
+  return `<nav>${t.map(([v,l])=>`<button class="${view===v?"on":""}" onclick="go('${v}')">${l}</button>`).join("")}</nav>`;
+}
+function go(v){ view=v; render(); }
+function bodyFor(s){
+  const map = {
+    auctioneer:{dash:vDashboard, post:vPost, live:vLive, aplayers:vPlayers, teams:vTeams, board:vBoard},
+    manager:{home:vHome, live:vLive, myteam:vMyTeam, rewards:vRewards, teams:vTeams, board:vBoard},
+    player:{home:vHome, profile:vProfile, live:vLive, teams:vTeams, board:vBoard}
+  }[s.role] || {home:vHome, live:vLive, teams:vTeams, board:vBoard};
+  return (map[view] || vHome)(s);
+}
+
+/* ----- login / registration ----- */
+let pendingAuth = null;
+function loginView(){
+  return `
+  <div class="card">
+    <h2>Welcome</h2>
+    <p class="muted">Credits only — no real money. One auctioneer runs the auction; managers bid on players with credits.</p>
+    <h3>Log in or sign up</h3>
+    <div class="row">
+      <button class="btn blue" onclick="showAuth('google')">Continue with Google</button>
+      <button class="btn ok" onclick="showAuth('phone')">Continue with Phone</button>
+    </div>
+    <div id="auth_box" style="display:none"></div>
+    <div id="name_box" style="display:none">
+      <h3>What's your name?</h3>
+      <label>This is how you'll appear in the app</label>
+      <input id="au_name" placeholder="your name">
+      <button class="btn" style="margin-top:8px" onclick="finishSignup()">Continue</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn sec" onclick="showAuctioneer()">Auctioneer login</button>
+    </div>
+    <div id="auct_box" style="display:none">
+      <label>Auctioneer passcode</label>
+      <input id="li_pass" type="password" placeholder="passcode">
+      <button class="btn" style="margin-top:8px" onclick="doAuctioneer()">Enter as Auctioneer</button>
+      <p class="muted" style="margin-top:6px">Default passcode: <b>owner123</b> — change it in the Dashboard.</p>
+    </div>
+  </div>`;
+}
+function showAuctioneer(){ document.getElementById("auct_box").style.display="block"; }
+function showAuth(m){
+  pendingAuth=null;
+  const box=document.getElementById("auth_box");
+  box.style.display="block";
+  document.getElementById("name_box").style.display="none";
+  if(m==="google"){
+    box.innerHTML=`<h3>Sign in with Google</h3>
+      ${fb
+        ?`<div class="muted" style="margin-bottom:8px">Opens the real Google sign-in popup.</div>
+          <button class="btn blue" onclick="doGoogle()">Open Google sign-in</button>`
+        :`<label>Google email</label><input id="au_email" type="email" placeholder="you@gmail.com">
+          <button class="btn" style="margin-top:8px" onclick="authGoogle()">Continue</button>
+          <p class="muted" style="margin-top:6px">Demo mode — Firebase not loaded.</p>`}`;
+  } else {
+    box.innerHTML=`<h3>Sign in with Phone</h3>
+      <label>Phone number (10 digits)</label><input id="au_phone" inputmode="numeric" placeholder="10-digit number">
+      <button class="btn" style="margin-top:8px" onclick="sendOtp()">Send OTP</button>
+      <div id="recaptcha-container"></div>
+      <div id="otp_box"></div>`;
+  }
+}
+function fbDomainHelp(){
+  return "Add pyhco538poorna7-design.github.io in Firebase Console → Authentication → Settings → Authorized domains, then try again.";
+}
+async function doGoogle(){
+  try{
+    const res=await fb.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    afterFirebase(res.user);
+  }catch(e){
+    flash(e.code==="auth/unauthorized-domain" ? fbDomainHelp()
+      : e.code==="auth/popup-closed-by-user" ? "Google popup closed before finishing."
+      : "Google sign-in failed: "+(e.code||e.message), "err");
+  }
+}
+function afterFirebase(u){
+  const ident=u.uid;
+  const existing=users()[ident];
+  if(existing){
+    saveUser(ident, existing.role, existing.name);
+    view = existing.role==="auctioneer" ? "dash" : (existing.role ? "live" : "home");
+    render();
+    return;
+  }
+  pendingAuth={method:"firebase", ident};
+  document.getElementById("name_box").style.display="block";
+  document.getElementById("au_name").value=u.displayName||"";
+  window.scrollTo(0,document.body.scrollHeight);
+}
+function authGoogle(){
+  const email=(document.getElementById("au_email").value||"").trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return flash("Enter a valid email.", "err");
+  afterIdent("google", email);
+}
+function sendOtp(){
+  const raw=(document.getElementById("au_phone").value||"").replace(/\D/g,"");
+  const digits = raw.length===12 && raw.startsWith("91") ? raw.slice(2) : raw;
+  if(!/^\d{10}$/.test(digits)) return flash("Enter a 10-digit phone number.", "err");
+  if(fb){
+    try{ if(window.recaptchaVerifier) window.recaptchaVerifier.clear(); }catch(e){}
+    window.recaptchaVerifier=new firebase.auth.RecaptchaVerifier("recaptcha-container", {size:"invisible"});
+    fb.signInWithPhoneNumber("+91"+digits, window.recaptchaVerifier)
+      .then(c=>{
+        window.confirmationResult=c;
+        pendingAuth={method:"phone-fb", ident:digits};
+        document.getElementById("otp_box").innerHTML=`<div class="msg good">OTP sent by SMS to +91 ${digits}.</div>
+          <label>Enter OTP</label><input id="au_otp" inputmode="numeric" placeholder="6-digit OTP">
+          <button class="btn" style="margin-top:8px" onclick="verifyOtp()">Verify &amp; Continue</button>`;
+      })
+      .catch(e=>{
+        flash(e.code==="auth/unauthorized-domain" ? fbDomainHelp()
+          : e.code==="auth/invalid-phone-number" ? "That phone number looks invalid."
+          : e.code==="auth/too-many-requests" ? "Too many attempts — wait a bit and retry."
+          : "SMS failed: "+(e.code||e.message)+". (Free Firebase plan only delivers to test numbers — add yours under Authentication → Sign-in method → Phone.)", "err");
+        try{ if(window.recaptchaVerifier) window.recaptchaVerifier.clear(); }catch(x){}
+      });
+    return;
+  }
+  pendingAuth={method:"phone", ident:digits, otp:String(Math.floor(100000+Math.random()*900000))};
+  document.getElementById("otp_box").innerHTML=`<div class="msg good">Demo OTP (no SMS backend yet): <b>${pendingAuth.otp}</b></div>
+    <label>Enter OTP</label><input id="au_otp" inputmode="numeric" placeholder="6-digit OTP">
+    <button class="btn" style="margin-top:8px" onclick="verifyOtp()">Verify &amp; Continue</button>`;
+}
+function verifyOtp(){
+  const v=(document.getElementById("au_otp").value||"").trim();
+  if(pendingAuth && pendingAuth.method==="phone-fb"){
+    window.confirmationResult.confirm(v)
+      .then(res=>afterFirebase(res.user))
+      .catch(()=>flash("Wrong OTP — check the SMS and try again.", "err"));
+    return;
+  }
+  if(!pendingAuth || v!==pendingAuth.otp) return flash("Wrong OTP.", "err");
+  afterIdent("phone", pendingAuth.ident);
+}
+function afterIdent(method, ident){
+  const u=users()[ident];
+  if(u){
+    saveUser(ident, u.role, u.name);
+    view = u.role==="auctioneer" ? "dash" : (u.role ? "live" : "home");
+    render();
+    return;
+  }
+  pendingAuth={method, ident, otp:null};
+  document.getElementById("name_box").style.display="block";
+  window.scrollTo(0,document.body.scrollHeight);
+}
+function finishSignup(){
+  const name=(document.getElementById("au_name").value||"").trim();
+  if(!pendingAuth) return flash("Verify your email or phone first.", "err");
+  if(name.length<2) return flash("Enter your name.", "err");
+  saveUser(pendingAuth.ident, null, name);
+  flash(`Welcome, ${name}! Now choose Player or Manager.`, "good");
+  view="home"; render();
+}
+function doAuctioneer(){
+  const auth = DB.get("auth", {pass:"owner123"});
+  const pass = document.getElementById("li_pass").value||"";
+  if(pass!==auth.pass){ flash("Wrong passcode.", "err"); return; }
+  const id = "auctioneer";
+  const u = users(); if(!u[id]) { u[id]={role:"auctioneer", name:"Auctioneer"}; DB.set("users",u); }
+  saveUser(id, "auctioneer", "Auctioneer");
+  view = "dash"; render();
+}
+function regForm(kind){
+  const box = document.getElementById("reg_box");
+  const s=session(); const myName=(users()[s.id]?.name||"");
+  if(kind==="player"){
+    box.innerHTML = `
+      <h3>Player registration</h3>
+      <label>In-game name (3+ chars)</label><input id="rg_ign" placeholder="IGN" value="${esc(myName)}">
+      <label>UID (8 to 12 digits, unique)</label><input id="rg_uid" placeholder="UID" inputmode="numeric">
+      <label>Roles (pick 1 to 4)</label>
+      <div class="roles">${ROLES.map(r=>`<label style="display:inline-block;margin:3px"><input type="checkbox" class="rg_role" value="${r}"> ${r}</label>`).join("")}</div>
+      <button class="btn" style="margin-top:10px" onclick="registerPlayer()">Register</button>
+      <p class="muted" style="margin-top:6px">After registering, upload your Free Fire profile screenshot in My Profile for bot verification.</p>`;
+  } else {
+    box.innerHTML = `
+      <h3>Manager registration — ${esc(myName)}</h3>
+      <label>Team name (unique)</label><input id="rg_team" placeholder="team name">
+      <button class="btn" style="margin-top:10px" onclick="registerManager()">Register</button>`;
+  }
+}
+function setRole(role){
+  const s=session(); const u=users(); u[s.id].role=role; DB.set("users", u);
+  DB.set("session", {id:s.id, role});
+}
+function registerPlayer(){
+  const s=session(); if(!s || s.role==="auctioneer") return flash("Log in with Google or Phone first.", "err");
+  const ign=(document.getElementById("rg_ign").value||"").trim();
+  const uid=(document.getElementById("rg_uid").value||"").trim();
+  const roles=[...document.querySelectorAll(".rg_role:checked")].map(c=>c.value);
+  if(ign.length<3) return flash("Name must be 3+ characters.", "err");
+  if(!/^\d{8,12}$/.test(uid)) return flash("UID must be 8 to 12 digits.", "err");
+  if(Object.values(players()).some(p=>p.uid===uid)) return flash("UID already registered.", "err");
+  if(roles.length<1 || roles.length>4) return flash("Pick 1 to 4 roles.", "err");
+  const ps=players();
+  ps[s.id]={ign, uid, roles, status:"approved", verified:false, by:"bot", locked:false, ts:Date.now()};
+  DB.set("players", ps);
+  setRole("player");
+  view="home";
+  flash("✅ Registration complete! Welcome to the auction.", "good");
+  render();
+}
+function registerManager(){
+  const s=session(); if(!s || s.role==="auctioneer") return flash("Log in with Google or Phone first.", "err");
+  const team=(document.getElementById("rg_team").value||"").trim();
+  if(!team) return flash("Enter a team name.", "err");
+  if(Object.values(managers()).some(m=>m.team.toLowerCase()===team.toLowerCase())) return flash("Team name already taken.", "err");
+  const ms=managers();
+  ms[s.id]={name:users()[s.id].name, team, perks:[], items:[], frame:null, effect:null, title:"", color:"#ff5c1a", ts:Date.now()};
+  DB.set("managers", ms);
+  setRole("manager");
+  view="home";
+  flash("✅ Registration complete! Welcome to the auction.", "good");
+  render();
+}
+
+/* ----- notification card ----- */
+function noticeCard(s){
+  const cfg=getConfig();
+  if(!cfg || !cfg.postedAt) return "";
+  if(s.role==="auctioneer") return "";
+  const j=joins()[s.id];
+  const joined = j && j.round===cfg.postedAt;
+  if(!participationOpen()){
+    return joined ? `<div class="notice">✅ You're in <b>${esc(cfg.title||"the auction")}</b>. Waiting for it to start.</div>` : "";
+  }
+  if(joined){
+    const onBlock = getLive()?.player===s.id;
+    return `<div class="notice">✅ You're in <b>${esc(cfg.title||"the auction")}</b> — ${fmtWhen(cfg.when)}.
+      ${onBlock ? "" : `<button class="btn bad" style="float:right" onclick="withdraw()">Withdraw</button>`}<div style="clear:both"></div></div>`;
+  }
+  return `<div class="notice">📢 <b>New auction:</b> ${esc(cfg.title||"Auction")} — ${fmtWhen(cfg.when)} @ ${esc(cfg.venue||"—")}.
+    <button class="btn ok" style="float:right" onclick="participate()">Participate</button><div style="clear:both"></div></div>`;
+}
+function participate(){
+  const s=session(); const cfg=getConfig();
+  if(!s.role) return flash("Choose Player or Manager on the Home tab first.", "err");
+  if(!participationOpen()) return flash("Participation is closed.", "err");
+  if(s.role==="player"){ const p=players()[s.id]; if(!p) return flash("Register first.","err"); if(cfg.verifiedOnly!==false && !p.verified) return flash("You must be verified to participate.","err"); }
+  if(s.role==="manager"){ if(!managers()[s.id]) return flash("Register first.","err"); }
+  const js=joins(); js[s.id]={role:s.role, round:cfg.postedAt, ts:Date.now()}; DB.set("joins", js);
+  flash("You're in! See you at the auction.","good");
+}
+function withdraw(){
+  const s=session();
+  if(getLive()?.player===s.id) return flash("You're on the block right now.","err");
+  const js=joins(); delete js[s.id]; DB.set("joins", js);
+  flash("Withdrawn from this auction.","good");
+}
+
+/* ----- home ----- */
+function vHome(s){
+  const u=users()[s.id]||{};
+  if(!s.role){
+    return `${noticeCard(s)}
+    <div class="card"><h2>Welcome, ${esc(u.name||s.id)} 👋</h2>
+      <p class="muted">One last step — choose what you are:</p>
+      <div class="row">
+        <button class="btn blue" onclick="regForm('player')">I'm a Player</button>
+        <button class="btn ok" onclick="regForm('manager')">I'm a Team Manager</button>
+      </div>
+      <div id="reg_box"></div>
+    </div>
+    <div class="card"><h2>What you need</h2>
+      <p class="muted">Players: in-game name, UID (8–12 digits) and 1 to 4 roles. Managers: a unique team name. Registration is always open; for each auction you press <b>Participate</b>.</p>
+      <h3>How it works</h3>
+      <p class="muted">Every manager gets ${DEFAULTS.credits} credits. The auctioneer posts an auction, players join, then the live room opens. Bid at least the base price (${DEFAULTS.base}) and raise by at least ${DEFAULTS.minRaise}. When the timer ends, the top bid wins the player.</p>
+    </div>`;
+  }
+  const cfg=getConfig();
+  const m=managers()[s.id]||{};
+  let status="";
+  if(s.role==="player"){
+    const p=players()[s.id]||{};
+    status=`<div class="grid">
+      <div class="stat"><b>${p.ign?esc(p.ign):"—"}</b><span> In-game name</span></div>
+      <div class="stat"><b>${p.verified?"✅":"⏳"}</b><span> ${p.verified?"Verified":"Verification pending"}</span></div>
+      <div class="stat"><b>${playerPoints(s.id)}</b><span> Individual points</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="go('live')">🔨 Live Room</button>
+      ${!p.verified?`<button class="btn sec" onclick="go('profile')">🤖 Verify my profile</button>`:""}
+    </div>`;
+  } else if(s.role==="manager"){
+    const sq=squadOf(s.id);
+    status=`<div class="grid">
+      <div class="stat"><b>${esc(m.team)}</b><span> Team</span></div>
+      <div class="stat"><b>${balance(s.id)}</b><span> Credits left</span></div>
+      <div class="stat"><b>${sq.length}/${cfg?.squad??5}</b><span> Squad</span></div>
+      <div class="stat"><b>${teamPoints(s.id)}</b><span> Team points</span></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="go('live')">🔨 Live Room</button>
+      <button class="btn sec" onclick="go('myteam')">🛡 My Team</button>
+      <button class="btn sec" onclick="go('rewards')">🎁 Rewards</button>
+    </div>`;
+  }
+  return noticeCard(s) + `<div class="card"><h2>Hi, ${esc(u.name||s.id)} 👋</h2>
+    <p class="muted">You're registered as <b>${s.role==="player"?"a Player":"a Team Manager"}</b>. ${participationOpen()?"An auction is open — press Participate!":"Use the tabs above to move around."}</p>
+    <div style="margin-top:10px">${status}</div>
+  </div>`;
+}
+
+/* ----- leaderboard ----- */
+function teamPoints(mid){ return squadOf(mid).reduce((s,p)=>s+p.price,0); }
+function playerPoints(pid){ return sold()[pid]?.price || 0; }
+function vBoard(){
+  const mgrs=Object.entries(managers())
+    .map(([id,m])=>({id, ...m, pts:teamPoints(id), count:squadOf(id).length}))
+    .sort((a,b)=>b.pts-a.pts || a.team.localeCompare(b.team));
+  const pls=Object.entries(players())
+    .map(([id,p])=>({id, ...p, pts:playerPoints(id), team: sold()[id] ? (managers()[sold()[id].mgr]?.team||null) : null}))
+    .sort((a,b)=>b.pts-a.pts || a.ign.localeCompare(b.ign));
+  const rankCls=i=>i<3?` r${i+1}`:"";
+  return `
+  ${noticeCard(session())}
+  <div class="card"><h2>🏆 Leaderboard</h2><p class="muted">Team points = total credits spent on your squad. Individual points = the price a player was sold for.</p></div>
+  <div class="card"><h2>🛡 Top Managers — team points</h2>
+    ${mgrs.length?mgrs.map((m,i)=>`<div class="bidrow">
+      <span><span class="rank${rankCls(i)}">${i+1}</span>
+      <b>${esc(m.team)}</b>${(m.perks||[]).includes("gold")?' <span class="pill acc">🥇</span>':""}
+      <span class="muted"> · ${esc(m.name)} · ${m.count} player(s)</span></span>
+      <b>${m.pts} pts</b>
+    </div>`).join(""):'<p class="muted">No managers yet.</p>'}
+  </div>
+  <div class="card"><h2>🎯 Top Players — individual points</h2>
+    ${pls.length?pls.map((p,i)=>`<div class="bidrow">
+      <span><span class="rank${rankCls(i)}">${i+1}</span>
+      <b>${esc(p.ign)}</b> <span class="muted">${esc(p.uid)}</span>
+      ${p.team?`<span class="pill">→ ${esc(p.team)}</span>`:""}
+      ${p.verified?'<span class="pill ok">✔</span>':""}</span>
+      <b>${p.pts} pts</b>
+    </div>`).join(""):'<p class="muted">No players yet.</p>'}
+  </div>`;
+}
+
+/* ----- auctioneer: dashboard ----- */
+function vDashboard(){
+  const cfg=getConfig();
+  const ps=players(), ms=managers(), js=joins(), sd=sold();
+  const joinedNow = Object.values(js).filter(j=>cfg && j.round===cfg.postedAt).length;
+  const auth=DB.get("auth",{pass:"owner123"});
+  return `
+  <div class="card"><h2>Dashboard</h2>
+    <div class="grid">
+      <div class="stat"><b>${Object.keys(ps).length}</b><span> Players</span></div>
+      <div class="stat"><b>${Object.values(ps).filter(p=>p.verified).length}</b><span> Verified</span></div>
+      <div class="stat"><b>${Object.keys(ms).length}</b><span> Managers</span></div>
+      <div class="stat"><b>${joinedNow}</b><span> Joined this round</span></div>
+      <div class="stat"><b>${Object.keys(sd).length}</b><span> Sold</span></div>
+      <div class="stat"><b>${pool().length}</b><span> In pool</span></div>
+    </div>
+    ${cfg ? `<h3>Current auction</h3>
+      <p><b>${esc(cfg.title||"Auction")}</b> — ${fmtWhen(cfg.when)} @ ${esc(cfg.venue||"—")}</p>
+      <p class="muted">Credits ${cfg.credits} · Base ${cfg.base} · Min raise ${cfg.minRaise} · Timer ${cfg.timer}s · Squad ${cfg.squad} · ${cfg.regOpen===false?"Participation closed":"Participation open"} · ${cfg.verifiedOnly===false?"Everyone":"Verified only"}</p>`
+    : `<p class="muted">No auction posted yet. Go to <b>Post Auction</b>.</p>`}
+  </div>
+  <div class="card"><h2>Settings</h2>
+    <label>Change auctioneer passcode</label>
+    <div class="row"><input id="st_pass" type="password" placeholder="new passcode"><button class="btn sec" onclick="changePass()">Save</button></div>
+    <p class="muted" style="margin-top:6px">Current passcode length: ${auth.pass.length} characters.</p>
+  </div>
+  <div class="card"><h2>⚠️ Demo note</h2>
+    <p class="muted">This build stores everything in your browser (localStorage). For a real event, move balances, bids and verification to a server with write rules — see SPEC.md, "Notes for porting".</p>
+  </div>`;
+}
+function changePass(){
+  const v=(document.getElementById("st_pass").value||"").trim();
+  if(v.length<4) return flash("Passcode must be 4+ characters.","err");
+  DB.set("auth",{pass:v}); flash("Passcode updated.","good");
+}
+
+/* ----- auctioneer: post auction ----- */
+function vPost(){
+  const cfg=getConfig()||{};
+  return `
+  ${noticeCard({role:"auctioneer"})}
+  <div class="card"><h2>Post Auction</h2>
+    <label>Title</label><input id="po_title" value="${esc(cfg.title||"Free Fire Squad Auction")}">
+    <div class="row">
+      <div><label>When</label><input id="po_when" type="datetime-local" value="${cfg.when?new Date(new Date(cfg.when).getTime()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):""}"></div>
+      <div><label>Venue</label><input id="po_venue" value="${esc(cfg.venue||"Online — Discord voice")}"</div>
+    </div>
+    <div class="row">
+      <div><label>Credits per manager</label><input id="po_credits" type="number" value="${cfg.credits??DEFAULTS.credits}"></div>
+      <div><label>Base price</label><input id="po_base" type="number" value="${cfg.base??DEFAULTS.base}"></div>
+      <div><label>Min raise</label><input id="po_raise" type="number" value="${cfg.minRaise??DEFAULTS.minRaise}"></div>
+    </div>
+    <div class="row">
+      <div><label>Bid timer (seconds)</label><input id="po_timer" type="number" value="${cfg.timer??DEFAULTS.timer}"></div>
+      <div><label>Squad size</label><input id="po_squad" type="number" value="${cfg.squad??DEFAULTS.squad}"></div>
+    </div>
+    <label style="margin-top:10px"><input type="checkbox" id="po_regopen" ${cfg.regOpen===false?"":"checked"}> Participation open</label>
+    <label><input type="checkbox" id="po_verif" ${cfg.verifiedOnly===false?"":"checked"}> Verified players only</label>
+    <label><input type="checkbox" id="po_bot" ${cfg.bot===false?"":"checked"}> Verification bot enabled</label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" onclick="postAuction()">📢 Post auction &amp; notify</button>
+      <button class="btn sec" onclick="copyWA()">📋 Copy WhatsApp message</button>
+    </div>
+    <div id="wa_out" class="msg good" style="display:none"></div>
+  </div>`;
+}
+function readPostForm(){
+  const whenLocal = document.getElementById("po_when").value;
+  return {
+    title: document.getElementById("po_title").value.trim() || "Free Fire Auction",
+    when: whenLocal ? new Date(whenLocal).getTime() : Date.now()+86400000,
+    venue: document.getElementById("po_venue").value.trim(),
+    credits: +document.getElementById("po_credits").value||DEFAULTS.credits,
+    base: +document.getElementById("po_base").value||DEFAULTS.base,
+    minRaise: +document.getElementById("po_raise").value||DEFAULTS.minRaise,
+    timer: +document.getElementById("po_timer").value||DEFAULTS.timer,
+    squad: +document.getElementById("po_squad").value||DEFAULTS.squad,
+    regOpen: document.getElementById("po_regopen").checked,
+    verifiedOnly: document.getElementById("po_verif").checked,
+    bot: document.getElementById("po_bot").checked
+  };
+}
+function postAuction(){
+  const cfg=readPostForm();
+  cfg.postedAt=Date.now();
+  DB.set("config", cfg);
+  DB.set("live", null);
+  DB.set("bids", {});
+  flash("Auction posted! Everyone must press Participate again.","good");
+}
+function waMessage(){
+  const cfg=readPostForm();
+  return `🔥 ${cfg.title} 🔥\n📅 ${fmtWhen(cfg.when)}\n📍 ${cfg.venue||"TBA"}\n\n💰 Credits: ${cfg.credits} | Base: ${cfg.base} | Min raise: ${cfg.minRaise}\n⏱ Bid timer: ${cfg.timer}s | Squad: ${cfg.squad}\n\nRegister, get verified, then press Participate before it starts!`;
+}
+function copyWA(){
+  const txt=waMessage();
+  const out=document.getElementById("wa_out");
+  out.style.display="block";
+  out.textContent=txt;
+  navigator.clipboard?.writeText(txt).then(()=>flash("Copied to clipboard.","good")).catch(()=>{});
+}
+
+/* ----- auctioneer: players ----- */
+function vPlayers(){
+  const ps=players();
+  const rows=Object.entries(ps).map(([id,p])=>{
+    const sd=sold()[id];
+    return `<div class="card">
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:2">
+          <b>${esc(p.ign)}</b> <span class="pill">${esc(p.uid)}</span>
+          ${p.verified?'<span class="pill ok">✔ verified</span>':'<span class="pill bad">unverified</span>'}
+          ${p.locked?'<span class="pill bad">🔒 locked</span>':''}
+          <span class="pill">by ${esc(p.by||"—")}</span>
+          ${sd?`<span class="pill acc">SOLD for ${sd.price}</span>`:""}
+          <div class="roles" style="margin-top:6px">${p.roles.map(r=>`<span>${esc(r)}</span>`).join("")}</div>
+        </div>
+        <div style="flex:0; display:flex; flex-direction:column; gap:6px">
+          <button class="btn ${p.verified?"bad":"ok"}" onclick="toggleVerify('${id}')">${p.verified?"Unverify":"Verify"}</button>
+          <button class="btn sec" onclick="removePlayer('${id}')">Remove</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="card"><h2>Players</h2><p class="muted">Verify players manually, or unverify to lock them until you re-verify. Removing a player deletes their sold record too, returning them to the pool.</p></div>${rows||'<div class="empty">No players yet.</div>'}`;
+}
+function toggleVerify(id){
+  const ps=players(); const p=ps[id]; if(!p) return;
+  p.verified=!p.verified;
+  p.by="owner";
+  p.locked=!p.verified;
+  DB.set("players", ps);
+  flash(p.verified?"Player verified.":"Player unverified and locked.", "good");
+}
+function removePlayer(id){
+  const ps=players(); delete ps[id]; DB.set("players", ps);
+  const js=joins(); delete js[id]; DB.set("joins", js);
+  const sd=sold(); delete sd[id]; DB.set("sold", sd);
+  const u=users(); if(u[id]){ u[id].role=null; DB.set("users", u); }
+  if(session()?.id===id){ DB.set("session", {id, role:null}); view="home"; }
+  flash("Player removed.","good");
+}
+
+/* ----- live room ----- */
+function vLive(s){
+  return noticeCard(s) + liveBody(s);
+}
+function liveBody(s){
+  const cfg=getConfig();
+  const live=getLive();
+  if(!cfg || !cfg.postedAt) return `<div class="card"><div class="empty">No auction posted yet.</div></div>`;
+  if(!live || !live.player){
+    let ctrl="";
+    if(s.role==="auctioneer"){
+      const opts=pool().map(pid=>`<option value="${pid}">${esc(players()[pid].ign)} (${esc(players()[pid].uid)})</option>`).join("");
+      ctrl=`<div class="card"><h2>Auctioneer controls</h2>
+        <label>Pick a player from the pool (${pool().length} available)</label>
+        <select id="lv_pick">${opts||"<option value=''>— pool empty —</option>"}</select>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" onclick="startPlayer()">▶ Start</button>
+          <button class="btn sec" onclick="startRandom()">🎲 Random</button>
+        </div></div>`;
+    }
+    return ctrl + `<div class="card"><div class="empty">🪑 No player on the block.<br><span class="muted">${s.role==="auctioneer"?"Start a player above.":"Waiting for the auctioneer…"}</span></div></div>`;
+  }
+  const p=players()[live.player]||{};
+  const tb=topBid(live.player);
+  const over = Date.now()>=live.endsAt;
+  const myBid = s.role==="manager" ? bids()[s.id] : null;
+  const myBidHere = myBid && myBid.playerId===live.player ? myBid : null;
+  const minNext = tb ? tb.amount + (cfg.minRaise||10) : (cfg.base||50);
+  const canBid = s.role==="manager" && !over && participationOpen()===participationOpen(); // bids allowed while window open
+  const squadFull = s.role==="manager" && squadOf(s.id).length >= (cfg.squad||5);
+  const bal = s.role==="manager" ? balance(s.id) : 0;
+  const joined = joins()[s.id] && joins()[s.id].round===cfg.postedAt;
+
+  let bidBox="";
+  if(s.role==="manager"){
+    if(!joined) bidBox=`<div class="msg err">You haven't joined this auction. Press Participate above.</div>`;
+    else if(squadFull) bidBox=`<div class="msg err">Your squad is full (${cfg.squad} players).</div>`;
+    else if(over) bidBox=`<div class="msg err">⏱ Time's up — bidding closed.</div>`;
+    else bidBox=`
+      <div class="row">
+        <div><label>Your bid (min ${minNext}, balance ${bal})</label><input id="bd_amt" type="number" value="${myBidHere?Math.max(minNext,myBidHere.amount):minNext}" min="${minNext}"></div>
+        <div style="flex:0; align-self:flex-end"><button class="btn" onclick="placeBid()">🔨 Bid</button></div>
+      </div>
+      ${myBidHere?`<p class="muted" style="margin-top:6px">Your current bid: <b>${myBidHere.amount}</b></p>`:""}`;
+  }
+  let ctrl="";
+  if(s.role==="auctioneer"){
+    ctrl=`<div class="card"><h2>Auctioneer controls</h2>
+      ${over?'<div class="msg err">⏱ Timer ended — sell or mark unsold.</div>':""}
+      <div class="row">
+        <button class="btn ok" onclick="sellNow()">✅ Sell to top bid</button>
+        <button class="btn bad" onclick="markUnsold()">✖ Unsold</button>
+        <button class="btn sec" onclick="cancelBlock()">Cancel block</button>
+      </div></div>`;
+  }
+  const bidList=Object.entries(bids()).filter(([,b])=>b.playerId===live.player)
+    .sort((a,b)=>b[1].amount-a[1].amount)
+    .map(([mid,b])=>`<div class="bidrow"><span>${esc(managers()[mid]?.team||managers()[mid]?.name||mid)}${(managers()[mid]?.perks||[]).includes("priority")?' <span class="pill acc">Priority</span>':''}</span><b>${b.amount}</b></div>`).join("");
+  return `
+  <div class="card">
+    <h2>🔨 On the block: ${esc(p.ign)} <span class="pill">${esc(p.uid)}</span></h2>
+    <div class="roles">${(p.roles||[]).map(r=>`<span>${esc(r)}</span>`).join("")}</div>
+    <div class="timer ${over?"hot":""}" id="lv_timer">--</div>
+    <p style="text-align:center" class="muted">Top bid</p>
+    <p class="big" style="text-align:center" id="lv_top">${tb?tb.amount:(cfg.base||50)+" (base)"}${tb?` — ${esc(managers()[tb.mid]?.team||"")}`:""}</p>
+    ${live.note?`<p class="muted" style="text-align:center">${esc(live.note)}</p>`:""}
+    <div style="margin-top:14px">${bidBox}</div>
+  </div>
+  <div class="card"><h3>Bids on this player</h3>${bidList||'<p class="muted">No bids yet.</p>'}</div>
+  ${ctrl}`;
+}
+function startPlayer(){
+  const pid=document.getElementById("lv_pick").value;
+  if(!pid) return flash("Pool is empty.","err");
+  const cfg=getConfig();
+  DB.set("live",{player:pid, endsAt:Date.now()+(cfg.timer||30)*1000, note:""});
+  render();
+}
+function startRandom(){
+  const pl=pool(); if(!pl.length) return flash("Pool is empty.","err");
+  const cfg=getConfig();
+  DB.set("live",{player:pl[Math.floor(Math.random()*pl.length)], endsAt:Date.now()+(cfg.timer||30)*1000, note:""});
+  render();
+}
+function placeBid(){
+  const s=session(); const cfg=getConfig(); const live=getLive();
+  const amt=+document.getElementById("bd_amt").value;
+  const tb=topBid(live.player);
+  const minNext = tb ? tb.amount + (cfg.minRaise||10) : (cfg.base||50);
+  if(!joins()[s.id] || joins()[s.id].round!==cfg.postedAt) return flash("Join this auction first.","err");
+  if(Date.now()>=live.endsAt) return flash("Bidding window closed.","err");
+  if(!(amt>=minNext)) return flash(`Bid must be at least ${minNext}.`,"err");
+  if(amt>balance(s.id)) return flash("Not enough credits.","err");
+  if(squadOf(s.id).length >= (cfg.squad||5)) return flash("Squad full.","err");
+  const bs=bids(); bs[s.id]={playerId:live.player, amount:amt, ts:Date.now()}; DB.set("bids", bs);
+  flash("Bid placed!","good");
+}
+function sellNow(){
+  const tb=topBid(getLive().player);
+  if(!tb) return flash("No bids — mark unsold instead.","err");
+  const sd=sold();
+  sd[getLive().player]={mgr:tb.mid, price:tb.amount, ts:Date.now()};
+  DB.set("sold", sd);
+  DB.set("live",{player:null, endsAt:0, note:`SOLD to ${managers()[tb.mid]?.team||"manager"} for ${tb.amount}`});
+  flash(`Sold for ${tb.amount}!`,"good");
+}
+function markUnsold(){
+  DB.set("live",{player:null, endsAt:0, note:"Unsold — returns to the pool."});
+  flash("Marked unsold.","good");
+}
+function cancelBlock(){
+  DB.set("live",{player:null, endsAt:0, note:"Block cancelled."});
+  render();
+}
+function tick(){
+  const el=document.getElementById("lv_timer"); if(!el) return;
+  const live=getLive(); if(!live||!live.player){ return; }
+  const left=Math.max(0, Math.ceil((live.endsAt-Date.now())/1000));
+  el.textContent = live.endsAt ? (left>0 ? "⏱ "+left+"s" : "⏱ Time's up!") : "—";
+  if(left>0) setTimeout(tick, 500);
+}
+
+/* ----- manager: my team ----- */
+function vMyTeam(s){
+  const cfg=getConfig(); const m=managers()[s.id];
+  if(!m) return `<div class="card"><div class="empty">Register as a manager first.</div></div>`;
+  const squad=squadOf(s.id);
+  const have=new Set(squad.flatMap(p=>p.roles||[]));
+  const missing=ROLES.filter(r=>!have.has(r));
+  const bal=balance(s.id);
+  return `
+  ${noticeCard(s)}
+  <div class="card"><h2>My Team — ${esc(m.team)}</h2>
+    <p class="muted">Balance: <b style="color:var(--acc2)">${bal}</b> credits · Squad ${squad.length}/${cfg?.squad??5}</p>
+    ${(m.perks||[]).map(id=>{const p=PERKS.find(x=>x.id===id); return p?`<span class="pill acc">${esc(p.name)}</span>`:"";}).join(" ")}
+    <h3>Squad</h3>
+    ${squad.length?squad.map(p=>`<div class="bidrow"><span><b>${esc(p.ign)}</b> <span class="pill">${esc(p.uid)}</span> <span class="muted">${(p.roles||[]).join(", ")}</span></span><b>${p.price}</b></div>`).join(""):'<p class="muted">No players yet — bid in the Live Room.</p>'}
+    ${squad.length&&missing.length?`<div class="msg good">Missing roles to consider: ${missing.slice(0,4).join(", ")}${missing.length>4?"…":""}</div>`:""}
+  </div>
+  <div class="card"><h2>Team banner</h2>
+    ${(m.perks||[]).includes("color") ? `
+      <label>Banner color</label>
+      <div class="row"><input id="mt_color" type="color" value="${esc(m.color||"#ff5c1a")}"><button class="btn" onclick="saveColor()">Save</button></div>`
+    : `<p class="muted">Buy the <b>Team Color</b> perk in Rewards to unlock your banner color.</p>`}
+    ${(m.items||[]).includes("x_title") ? `
+      <label>Custom title (shown under your team name)</label>
+      <div class="row"><input id="mt_title" value="${esc(m.title||"")}" placeholder="e.g. Champions 2026"><button class="btn" onclick="saveTitle()">Save</button></div>` : ""}
+    <h3>Danger zone</h3>
+    <p class="muted">Deleting your registration removes your team. Your sold players return to the pool.</p>
+    <button class="btn bad" style="margin-top:8px" onclick="deleteManager()">🗑 Delete my registration</button>
+  </div>`;
+}
+function saveColor(){
+  const s=session(); const ms=managers(); ms[s.id].color=document.getElementById("mt_color").value;
+  DB.set("managers", ms); flash("Color saved.","good");
+}
+function saveTitle(){
+  const s=session(); const ms=managers(); ms[s.id].title=(document.getElementById("mt_title").value||"").trim().slice(0,40);
+  DB.set("managers", ms); flash("Title saved.","good");
+}
+function deleteManager(){
+  const s=session();
+  if(!confirm("Delete your registration? Your players return to the pool.")) return;
+  const ms=managers(); delete ms[s.id]; DB.set("managers", ms);
+  const sd=sold(); Object.keys(sd).forEach(pid=>{ if(sd[pid].mgr===s.id) delete sd[pid]; }); DB.set("sold", sd);
+  const bs=bids(); delete bs[s.id]; DB.set("bids", bs);
+  const js=joins(); delete js[s.id]; DB.set("joins", js);
+  const u=users(); if(u[s.id]){ u[s.id].role=null; DB.set("users", u); }
+  DB.set("session", {id:s.id, role:null});
+  view="home";
+  flash("Registration deleted. You can register again anytime.","good");
+  render();
+}
+
+/* ----- manager: rewards ----- */
+function rewardCard(p, owned, bal, action){
+  return `<div class="card"><h2>${esc(p.name)}</h2><p class="muted">${esc(p.desc)}</p>
+    <p style="margin:8px 0">Cost: <b style="color:var(--acc2)">${p.cost}</b> credits</p>
+    ${owned?action:`<button class="btn" onclick="buyCosmetic('${p.id}')" ${bal<p.cost?"disabled":""}>Buy</button>`}
+  </div>`;
+}
+function vRewards(s){
+  const m=managers()[s.id]; if(!m) return `<div class="card"><div class="empty">Register as a manager first.</div></div>`;
+  const bal=balance(s.id);
+  const owned=(m.items||[]);
+  const wear=(id,label)=>`<button class="btn ok" onclick="equipCosmetic('${id}')">${label}</button>`;
+  const frames=COSMETICS.filter(c=>c.type==="frame").map(c=>rewardCard(c, owned.includes(c.id), bal,
+    m.frame===c.id ? wear(c.id,"Remove frame") : wear(c.id,"Wear"))).join("");
+  const effects=COSMETICS.filter(c=>c.type==="effect").map(c=>rewardCard(c, owned.includes(c.id), bal,
+    m.effect===c.id ? wear(c.id,"Remove effect") : wear(c.id,"Wear"))).join("");
+  const extras=COSMETICS.filter(c=>c.type==="extra").map(c=>rewardCard(c, owned.includes(c.id), bal, '<span class="pill ok">✔ Active</span>')).join("");
+  const perkCards=PERKS.map(p=>{
+    const o=(m.perks||[]).includes(p.id);
+    return `<div class="card"><h2>${esc(p.name)}</h2><p class="muted">${esc(p.desc)}</p>
+      <p style="margin:8px 0">Cost: <b style="color:var(--acc2)">${p.cost}</b> credits</p>
+      ${o?'<span class="pill ok">✔ Owned</span>':`<button class="btn" onclick="buyPerk('${p.id}')" ${bal<p.cost?"disabled":""}>Buy</button>`}
+    </div>`;
+  }).join("");
+  return `
+  ${noticeCard(s)}
+  <div class="card"><h2>🎁 Rewards</h2><p class="muted">Spend credits. Balance: <b style="color:var(--acc2)">${bal}</b></p></div>
+  <h3 style="margin:4px 0 8px">🖼 Profile frames</h3>
+  <div class="grid">${frames}</div>
+  <h3 style="margin:14px 0 8px">✨ Effects</h3>
+  <div class="grid">${effects}</div>
+  <h3 style="margin:14px 0 8px">➕ More</h3>
+  <div class="grid">${extras}</div>
+  <h3 style="margin:14px 0 8px">🔨 Auction perks</h3>
+  <div class="grid">${perkCards}</div>`;
+}
+function buyCosmetic(id){
+  const s=session(); const c=COSMETICS.find(x=>x.id===id); if(!c) return;
+  const ms=managers(); const m=ms[s.id];
+  if((m.items||[]).includes(id)) return;
+  if(balance(s.id) < c.cost) return flash("Not enough credits.","err");
+  m.items=[...(m.items||[]), id];
+  if(c.type==="frame") m.frame=id;
+  if(c.type==="effect") m.effect=id;
+  DB.set("managers", ms);
+  flash(`${c.name} purchased and equipped!`,"good");
+}
+function equipCosmetic(id){
+  const s=session(); const c=COSMETICS.find(x=>x.id===id); if(!c) return;
+  const ms=managers(); const m=ms[s.id];
+  if(c.type==="frame") m.frame = m.frame===id ? null : id;
+  if(c.type==="effect") m.effect = m.effect===id ? null : id;
+  DB.set("managers", ms);
+  flash(m.frame===id||m.effect===id ? `${c.name} equipped.` : `${c.name} removed.`, "good");
+  render();
+}
+function buyPerk(id){
+  const s=session(); const p=PERKS.find(x=>x.id===id); if(!p) return;
+  const ms=managers(); const m=ms[s.id];
+  if((m.perks||[]).includes(id)) return;
+  if(balance(s.id) < p.cost) return flash("Not enough credits.","err");
+  m.perks=[...(m.perks||[]), id]; DB.set("managers", ms);
+  flash(`${p.name} purchased!`,"good");
+}
+
+/* ----- player: my profile ----- */
+function vProfile(s){
+  const cfg=getConfig(); const p=players()[s.id];
+  if(!p) return `<div class="card"><div class="empty">Register as a player first.</div></div>`;
+  return `
+  ${noticeCard(s)}
+  <div class="card"><h2>My Profile</h2>
+    <p><b>${esc(p.ign)}</b> <span class="pill">${esc(p.uid)}</span>
+    ${p.verified?'<span class="pill ok">✔ verified</span>':'<span class="pill bad">not verified</span>'}
+    ${p.locked?'<span class="pill bad">🔒 locked — ask the auctioneer</span>':''}</p>
+    <div class="roles" style="margin-top:8px">${p.roles.map(r=>`<span>${esc(r)}</span>`).join("")}</div>
+    <h3>Verification</h3>
+    ${p.verified ? '<p class="muted">You are verified. ✅</p>' : p.locked
+      ? '<p class="msg err">The auctioneer unverified you. Ask them to verify you manually.</p>'
+      : `<p class="muted">Upload a screenshot of your Free Fire profile. ${cfg?.bot!==false&&localStorage.getItem("ffa_aikey")?"The bot will read your name and UID.":"Add a bot API key below, or the auctioneer will verify you manually."}</p>
+      <input type="file" id="pf_shot" accept="image/*" style="margin-top:8px">
+      <button class="btn" style="margin-top:8px" onclick="runBot()">🤖 Verify with bot</button>
+      <div id="pf_out"></div>
+      <h3>Bot API key (optional, stays in this browser)</h3>
+      <div class="row"><input id="pf_key" type="password" placeholder="OpenAI-compatible API key" value="${esc(localStorage.getItem("ffa_aikey")||"")}"><button class="btn sec" onclick="saveKey()">Save key</button></div>`}
+    <h3>Danger zone</h3>
+    ${sold()[s.id] ? '<p class="msg err">You were sold to a team — ask the auctioneer to remove you.</p>'
+      : '<button class="btn bad" onclick="deletePlayer()">🗑 Delete my registration</button>'}
+  </div>`;
+}
+function saveKey(){
+  const v=(document.getElementById("pf_key").value||"").trim();
+  if(v) localStorage.setItem("ffa_aikey", v); else localStorage.removeItem("ffa_aikey");
+  flash("Key saved in this browser only.","good");
+}
+function runBot(){
+  const f=document.getElementById("pf_shot").files[0];
+  const out=document.getElementById("pf_out");
+  if(!f) { out.innerHTML='<div class="msg err">Choose a screenshot first.</div>'; return; }
+  const s=session(); const p=players()[s.id];
+  const reader=new FileReader();
+  reader.onload=async ()=>{
+    const dataUrl=reader.result;
+    out.innerHTML='<div class="msg good">🤖 Reading screenshot…</div>';
+    let r;
+    try{ r = await botVerify(dataUrl, p.ign, p.uid); }
+    catch(e){ r={ok:false, reason:"api"}; }
+    if(r.reason==="nokey"){ out.innerHTML='<div class="msg err">No API key saved. Add one below, or wait for manual verification.</div>'; return; }
+    if(r.reason==="api"){ out.innerHTML='<div class="msg err">Bot call failed. The auctioneer can verify you manually.</div>'; return; }
+    if(r.reason==="parse"){ out.innerHTML='<div class="msg err">Could not read the bot reply. Try again or ask for manual verification.</div>'; return; }
+    const ps=players();
+    if(r.ok){ ps[s.id].verified=true; ps[s.id].by="bot"; ps[s.id].locked=false; DB.set("players", ps); flash("Bot verified you! ✅","good"); }
+    else {
+      out.innerHTML=`<div class="msg err">Bot read name "${esc(r.read?.name||"?")}" UID "${esc(r.read?.uid||"?")}" — mismatch. Sent to the auctioneer for manual verification.</div>`;
+      ps[s.id].by="bot"; DB.set("players", ps);
+    }
+  };
+  reader.readAsDataURL(f);
+}
+function deletePlayer(){
+  const s=session();
+  if(!confirm("Delete your registration?")) return;
+  removePlayer(s.id);
+  flash("Registration deleted. You can register again anytime.","good");
+  render();
+}
+
+/* ----- teams (everyone) ----- */
+function vTeams(){
+  const ms=managers(); const cfg=getConfig();
+  const list=Object.entries(ms).sort((a,b)=>{
+    const ap=(a[1].perks||[]).includes("spotlight")?0:1, bp=(b[1].perks||[]).includes("spotlight")?0:1;
+    return ap-bp || a[1].team.localeCompare(b[1].team);
+  });
+  return `
+  ${noticeCard(session())}
+  <div class="card"><h2>Teams</h2><p class="muted">${list.length} team(s) · ${cfg?`credits ${cfg.credits} · squad ${cfg.squad}`:""}</p></div>
+  ${list.length?`<div class="grid">${list.map(([id,m])=>{
+    const squad=squadOf(id);
+    const spent=squad.reduce((s2,p)=>s2+p.price,0);
+    const fx=m.effect?`<span class="fx-emoji">${EFFECT_EMOJI[m.effect]||""}</span>`:"";
+    return `<div class="teamcard ${m.frame?FRAME_CLASS[m.frame]||"":""}">
+      <div class="teambanner" style="background:${esc(m.color||"#ff5c1a")}"></div>
+      <div class="teambody">
+        <b class="${(m.items||[]).includes("x_glow")?"glow":""}">${esc(m.team)}${fx}</b>
+        ${(m.items||[]).includes("x_title")&&m.title?`<p class="muted" style="font-style:italic">${esc(m.title)}</p>`:""}
+        ${(m.perks||[]).includes("gold")?' <span class="pill acc">🥇 Gold</span>':""}
+        ${(m.perks||[]).includes("spotlight")?' <span class="pill acc">📌 Spotlight</span>':""}
+        <p class="muted">${esc(m.name)} · ${squad.length}/${cfg?.squad??5} players · ${spent} pts</p>
+        ${squad.map(p=>`<div class="bidrow"><span>${esc(p.ign)} <span class="muted">${(p.roles||[])[0]||""}</span></span><b>${p.price}</b></div>`).join("")||'<p class="muted" style="padding:6px 0">No players yet.</p>'}
+      </div>
+    </div>`;
+  }).join("")}</div>`:'<div class="empty">No teams yet.</div>'}`;
+}
+
+/* ---------- boot ---------- */
+render();
+</script>
+</body>
+</html>
