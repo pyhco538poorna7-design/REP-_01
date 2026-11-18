@@ -112,14 +112,15 @@ router.get('/auctions', requireAuth, (req, res) => {
 });
 
 router.post('/auctions', requireRole('ADMIN'), (req, res) => {
-  const { name, auction_date, start_time, starting_credits } = req.body || {};
+  const { name, auction_date, start_time, starting_credits, venue } = req.body || {};
   if (!name || !auction_date || !start_time) return res.status(400).json({ error: 'Auction name, date and starting time are required.' });
   const credits = parseInt(starting_credits, 10) || 5000;
   if (credits < 100) return res.status(400).json({ error: 'Starting credits must be at least 100.' });
-  const id = db.prepare('INSERT INTO auctions (name, auction_date, start_time, starting_credits, status, created_by) VALUES (?,?,?,?,?,?)')
-    .run(name, auction_date, start_time, credits, 'upcoming', req.user.id).lastInsertRowid;
-  audit(req.user.id, 'auction_create', { id, name, credits });
-  notifyAll('auction', 'New auction announced', `${name} — ${auction_date} at ${start_time}. Starting budget: ${credits} credits per team.`);
+  const venueName = String(venue || 'DC').trim() || 'DC';
+  const id = db.prepare('INSERT INTO auctions (name, auction_date, start_time, venue, starting_credits, status, created_by) VALUES (?,?,?,?,?,?,?)')
+    .run(name, auction_date, start_time, venueName, credits, 'upcoming', req.user.id).lastInsertRowid;
+  audit(req.user.id, 'auction_create', { id, name, credits, venue: venueName });
+  notifyAll('auction', 'New auction announced', `${name} — ${auction_date} at ${start_time} (Venue: ${venueName}). Starting budget: ${credits} credits per team.`);
   broadcastToChannel('auctions', { type: 'auctions_changed' });
   res.status(201).json({ message: 'Auction created.', auction_id: id });
 });

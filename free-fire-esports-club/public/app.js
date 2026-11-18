@@ -342,6 +342,7 @@ async function viewAuctions(view) {
             <h3 style="font-size:1rem">${esc(a.name)}</h3>${statusTag(a.status)}
           </div>
           <div class="hint" style="margin:.5rem 0">📅 ${fmtDate(a.auction_date)} · 🕕 ${fmtTime(a.start_time)} · 💰 ${a.starting_credits} credits/team</div>
+          <div class="hint">📍 Venue: ${esc(a.venue || 'DC')}</div>
           <div class="hint">${a.approved_players} approved players · ${a.participating_teams} teams · ${a.sold_players} sold</div>
           <div style="display:flex;gap:.5rem;margin-top:.9rem;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" onclick="location.hash='#/auction/${a.id}'">OPEN AUCTION ROOM</button>
@@ -437,7 +438,8 @@ async function renderAuctionDetail(view, id, silent) {
 
   view.innerHTML = `
     <div class="page-head">
-      <h2 class="page-title">🔨 <span class="accent">${esc(a.name)}</span></h2>
+      <div><h2 class="page-title">🔨 <span class="accent">${esc(a.name)}</span></h2>
+        <div class="hint">📍 Venue: ${esc(a.venue || 'DC')} · 📅 ${fmtDate(a.auction_date)} · 🕕 ${fmtTime(a.start_time)}</div></div>
       <button class="btn btn-ghost btn-sm" onclick="location.hash='#/auction'">← ALL AUCTIONS</button>
     </div>
     ${a.status === 'live' ? `<div class="auction-live-banner"><h2>🔴 LIVE BIDDING IN PROGRESS</h2><div>${isAdmin ? `
@@ -1053,6 +1055,7 @@ async function adminAuctions(el) {
         <div><label>AUCTION NAME</label><input id="ca-name"></div>
         <div><label>DATE</label><input id="ca-date" type="date"></div>
         <div><label>STARTING TIME</label><input id="ca-time" type="time" value="18:00"></div>
+        <div><label>VENUE</label><input id="ca-venue" value="DC" placeholder="DC"></div>
         <div><label>STARTING CREDITS</label><input id="ca-credits" type="number" value="5000"></div>
         <button class="btn btn-primary btn-sm" id="ca-create">PUBLISH AUCTION</button>
       </div>
@@ -1060,7 +1063,7 @@ async function adminAuctions(el) {
     <div class="table-wrap"><table><thead><tr><th>AUCTION</th><th>WHEN</th><th>PLAYERS</th><th>TEAMS</th><th>STATUS</th><th>CONTROLS</th></tr></thead>
       <tbody>${auctions.map((a) => `
         <tr><td><strong>${esc(a.name)}</strong></td>
-        <td class="hint">${fmtDate(a.auction_date)} ${fmtTime(a.start_time)}</td>
+        <td class="hint">${fmtDate(a.auction_date)} ${fmtTime(a.start_time)}<br>📍 Venue: ${esc(a.venue || 'DC')}</td>
         <td>${a.approved_players} approved / ${a.pending_players} pending<br><span class="hint">${a.sold_players} sold</span></td>
         <td>${a.participating_teams}</td><td>${statusTag(a.status)}</td>
         <td><div class="inline-actions">
@@ -1075,7 +1078,8 @@ async function adminAuctions(el) {
     try {
       const d = await api('/api/auctions', { method: 'POST', body: {
         name: $('#ca-name').value, auction_date: $('#ca-date').value,
-        start_time: $('#ca-time').value, starting_credits: Number($('#ca-credits').value),
+        start_time: $('#ca-time').value, venue: $('#ca-venue').value || 'DC',
+        starting_credits: Number($('#ca-credits').value),
       } });
       toast(d.message, 'success');
       adminAuctions(el);

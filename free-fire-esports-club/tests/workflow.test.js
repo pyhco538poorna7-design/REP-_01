@@ -159,6 +159,8 @@ async function main() {
     r = await admin.req('POST', '/api/auctions', { name: 'Test Auction', auction_date: '2025-12-01', start_time: '18:00', starting_credits: 5000 });
     check('admin creates auction', r.status === 201);
     const auctionId = r.data.auction_id;
+    r = await admin.req('GET', `/api/auctions/${auctionId}`);
+    check('auction venue defaults to DC', r.data.auction.venue === 'DC', JSON.stringify(r.data.auction.venue));
 
     r = await p1.req('POST', `/api/auctions/${auctionId}/register`);
     check('player registers for auction', r.status === 201, JSON.stringify(r.data));

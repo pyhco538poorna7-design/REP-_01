@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS auctions (
   name TEXT NOT NULL,
   auction_date TEXT NOT NULL,
   start_time TEXT NOT NULL,
+  venue TEXT NOT NULL DEFAULT 'DC',
   starting_credits INTEGER NOT NULL DEFAULT 5000,
   status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','live','paused','closed')),
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -202,6 +203,10 @@ CREATE INDEX IF NOT EXISTS idx_results_team ON match_results(team_id);
 CREATE INDEX IF NOT EXISTS idx_messages_team ON messages(team_id, id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, id);
 `);
+
+if (!db.prepare("SELECT name FROM pragma_table_info('auctions') WHERE name = 'venue'").get()) {
+  db.exec("ALTER TABLE auctions ADD COLUMN venue TEXT NOT NULL DEFAULT 'DC'");
+}
 
 module.exports = db;
 if (require.main === module) require('./seed');
