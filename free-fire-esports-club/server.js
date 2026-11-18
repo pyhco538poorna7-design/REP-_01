@@ -3,6 +3,10 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const db = require('./db');
+if (!db.prepare('SELECT COUNT(*) AS c FROM users').get().c) {
+  console.log('Empty database detected — seeding demo data...');
+  require('./seed');
+}
 const { attachUser } = require('./auth');
 const { handleUpgrade } = require('./ws');
 
