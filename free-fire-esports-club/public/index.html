@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FF Esports Club — Management Platform</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#ff7a1a">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -37,7 +45,6 @@
         <button type="button" class="role-btn" data-role="MANAGER">📋 MANAGER</button>
       </div>
       <label>USERNAME<input type="text" name="username" autocomplete="username" required></label>
-      <label>DISPLAY NAME<input type="text" name="display_name" required></label>
       <label>PASSWORD<input type="password" name="password" autocomplete="new-password" required minlength="6"></label>
       <div id="player-fields">
         <label>FREE FIRE GAME ID<input type="text" name="game_id" placeholder="FF12345678"></label>
@@ -46,7 +53,7 @@
       </div>
       <div id="manager-fields" class="hidden">
         <label>TEAM NAME<input type="text" name="team_name"></label>
-        <label>TEAM LOGO (EMOJI)<input type="text" name="team_logo" placeholder="🔥" maxlength="4"></label>
+        <label class="file-label">TEAM LOGO (IMAGE)<input type="file" id="team-logo-file" accept="image/png,image/jpeg,image/webp" hidden><div class="logo-upload-box" id="logo-upload-box"><span id="logo-upload-text">📁 click to upload your team logo</span></div></label>
         <label>CONTACT INFO<input type="text" name="contact" placeholder="email / discord / phone"></label>
       </div>
       <button type="submit" class="btn btn-primary btn-block">CREATE ACCOUNT</button>

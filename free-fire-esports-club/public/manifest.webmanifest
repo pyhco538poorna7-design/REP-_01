@@ -1,0 +1,15 @@
+{
+  "name": "FF Esports Club",
+  "short_name": "FF Club",
+  "description": "Free Fire esports club management: auctions, matches, teams and leaderboards.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101010",
+  "theme_color": "#ff7a1a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

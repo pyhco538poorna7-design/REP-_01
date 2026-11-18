@@ -4,6 +4,24 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const isImageLogo = (v) => typeof v === 'string' && (v.startsWith('data:image/') || v.startsWith('http') || v.startsWith('/uploads'));
+function logoChip(logo, size) {
+  const v = logo || '🛡️';
+  if (isImageLogo(v)) return `<span class="team-logo img"><img src="${esc(v)}" alt=""></span>`;
+  return `<span class="team-logo"${size ? ` style="font-size:${size}"` : ''}>${esc(v)}</span>`;
+}
+function readLogoFile(file, maxBytes = 512 * 1024) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    if (!file.type.startsWith('image/')) return reject(new Error('Logo must be an image file (png/jpg/webp).'));
+    if (file.size > maxBytes) return reject(new Error('Logo image must be under 512 KB.'));
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the logo file.'));
+    reader.readAsDataURL(file);
+  });
+}
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 const fmtTime = (t) => t || '';
 const fmtDateTime = (s) => s ? s.replace('T', ' ').slice(0, 16) : '';
@@ -73,6 +91,7 @@ function onAuctionUpdate(msg) {
 /* ================= auth screen ================= */
 const ALL_ROLES = ['Rusher', 'Support', 'Sniper', 'IGL', 'Entry Fragger', 'Assaulter'];
 let pickedRoles = [];
+let regTeamLogo = null;
 
 function initAuthScreen() {
   $('#roles-picker').innerHTML = ALL_ROLES.map((r) => `<span class="role-chip" data-role="${r}">${r}</span>`).join('');
@@ -82,6 +101,20 @@ function initAuthScreen() {
     else if (pickedRoles.length < 3) { pickedRoles.push(r); chip.classList.add('on'); }
     else toast('You can pick at most 3 roles', 'error');
   }));
+  const logoBox = $('#logo-upload-box');
+  if (logoBox) {
+    logoBox.addEventListener('click', () => $('#team-logo-file').click());
+    $('#team-logo-file').addEventListener('change', async () => {
+      try {
+        const durl = await readLogoFile($('#team-logo-file').files[0]);
+        if (durl) {
+          regTeamLogo = durl;
+          logoBox.innerHTML = `<img src="${esc(durl)}" alt="">`;
+          logoBox.classList.add('has-logo');
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  }
   $$('.role-btn').forEach((b) => b.addEventListener('click', () => {
     $$('.role-btn').forEach((x) => x.classList.remove('active'));
     b.classList.add('active');
@@ -106,10 +139,10 @@ function initAuthScreen() {
     const fd = new FormData(e.target);
     const role = $('.role-btn.active').dataset.role;
     const body = {
-      username: fd.get('username'), password: fd.get('password'), display_name: fd.get('display_name'), role,
+      username: fd.get('username'), password: fd.get('password'), role,
     };
     if (role === 'PLAYER') { body.game_id = fd.get('game_id'); body.roles = pickedRoles; }
-    else { body.team_name = fd.get('team_name'); body.team_logo = fd.get('team_logo'); body.contact = fd.get('contact'); }
+    else { body.team_name = fd.get('team_name'); body.team_logo = regTeamLogo || ''; body.contact = fd.get('contact'); }
     try {
       const data = await api('/api/auth/register', { method: 'POST', body });
       toast(data.message, 'success');
@@ -239,7 +272,7 @@ async function viewDashboard(view) {
         ${top5.map((t) => `
           <div style="display:flex;align-items:center;gap:.7rem;padding:.5rem 0;border-bottom:1px solid var(--border)">
             <span class="rank-cell rank-${t.rank}">#${t.rank}</span>
-            <span class="team-logo">${esc(t.logo)}</span>
+            ${logoChip(t.logo)}
             <div style="flex:1"><strong>${esc(t.name)}</strong><div class="hint">${t.total_kills} kills · ${t.total_booyahs} booyahs</div></div>
             <span class="bid-amount">${t.kill_points} pts</span>
           </div>`).join('') || '<div class="empty-state">No teams yet</div>'}
@@ -273,7 +306,7 @@ async function viewDashboard(view) {
         <div class="table-wrap"><table><thead><tr><th>Match</th><th>Date</th><th>Team</th><th>Kills</th><th>Position</th></tr></thead>
         <tbody>${dash.latest_results.map((r) => `
           <tr><td>${esc(r.tournament_name)}</td><td>${fmtDate(r.match_date)}</td>
-          <td><span class="team-logo">${esc(r.team_logo)}</span>${esc(r.team_name)}</td>
+          <td>${logoChip(r.team_logo)}${esc(r.team_name)}</td>
           <td class="rank-cell">${r.kills}</td><td>${r.position === 1 ? '🏆 <strong style="color:var(--gold)">BOOYAH</strong>' : '#' + r.position}</td></tr>`).join('')}
         </tbody></table></div>
       </div>
@@ -300,7 +333,7 @@ async function viewLeaderboards(view, tab) {
         <td>${avatarHtml(p.player_name, p.avatar)}<strong>${esc(p.player_name)}</strong> <span class="hint">@${esc(p.username)}</span></td>
         <td class="mono">${esc(p.game_id)}</td>
         <td class="rank-cell" style="color:var(--red)">${p.kills}</td>
-        <td>${p.team_name ? `<span class="team-logo">${esc(p.team_logo)}</span>${esc(p.team_name)}` : '<span class="hint">Free Agent</span>'}</td></tr>`).join('')}
+        <td>${p.team_name ? `${logoChip(p.team_logo)}${esc(p.team_name)}` : '<span class="hint">Free Agent</span>'}</td></tr>`).join('')}
       </tbody></table></div>`;
   } else if (tab === 'teams') {
     const { leaderboard } = await api('/api/leaderboards/teams');
@@ -308,7 +341,7 @@ async function viewLeaderboards(view, tab) {
       <thead><tr><th>RANK</th><th>TEAM</th><th>COMBINED KILLS</th><th>KILL POINTS</th><th>BOOYAHS</th><th>MEMBERS</th></tr></thead>
       <tbody>${leaderboard.map((t) => `
         <tr><td class="rank-cell rank-${t.rank <= 3 ? t.rank : ''}">#${t.rank}</td>
-        <td><span class="team-logo">${esc(t.logo)}</span><strong>${esc(t.name)}</strong></td>
+        <td>${logoChip(t.logo)}<strong>${esc(t.name)}</strong></td>
         <td class="rank-cell" style="color:var(--red)">${t.total_kills}</td>
         <td class="rank-cell" style="color:var(--gold)">${t.kill_points}</td>
         <td>🏆 ${t.total_booyahs}</td><td>${t.member_count}</td></tr>`).join('')}
@@ -320,7 +353,7 @@ async function viewLeaderboards(view, tab) {
       <thead><tr><th>RANK</th><th>TEAM</th><th>TOTAL BOOYAHS</th><th>TOTAL KILLS</th></tr></thead>
       <tbody>${leaderboard.map((t) => `
         <tr><td class="rank-cell rank-${t.rank <= 3 ? t.rank : ''}">#${t.rank}</td>
-        <td><span class="team-logo">${esc(t.logo)}</span><strong>${esc(t.name)}</strong></td>
+        <td>${logoChip(t.logo)}<strong>${esc(t.name)}</strong></td>
         <td class="rank-cell" style="color:var(--gold)">🏆 ${t.total_booyahs}</td>
         <td>${t.total_kills}</td></tr>`).join('')}
       </tbody></table></div>`;
@@ -416,7 +449,7 @@ async function renderAuctionDetail(view, id, silent) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.8rem;gap:.5rem;flex-wrap:wrap">
           <div>
             <div class="hint">CURRENT BID</div>
-            ${p.current_bid ? `<span class="bid-amount">💰 ${p.current_bid}</span> <span class="hint">${esc(p.current_bid_team.logo)} ${esc(p.current_bid_team.name)}${isMine ? ' (you)' : ''}</span>`
+            ${p.current_bid ? `<span class="bid-amount">💰 ${p.current_bid}</span> <span class="hint">${logoChip(p.current_bid_team.logo)} ${esc(p.current_bid_team.name)}${isMine ? ' (you)' : ''}</span>`
               : '<span class="hint">No bids yet</span>'}
           </div>
           <div class="inline-actions">
@@ -459,7 +492,7 @@ async function renderAuctionDetail(view, id, silent) {
       <div style="display:flex;flex-direction:column;gap:1rem">
         ${state.my_team ? `
           <div class="card"><div class="card-title">💰 Your Team Budget</div>
-            <div style="display:flex;align-items:center;gap:.6rem"><span class="team-logo" style="font-size:1.6rem">${esc(state.my_team.logo)}</span>
+            <div style="display:flex;align-items:center;gap:.6rem">${logoChip(state.my_team.logo, '1.6rem')}
               <div><strong>${esc(state.my_team.name)}</strong><div class="hint">per-auction ledger</div></div></div>
             <div class="credits-bar" style="margin-top:.8rem"><span class="credits-value">${state.my_team.available}</span><span class="hint">available credits</span></div>
             <div class="hint" style="margin-top:.3rem">Budget: ${state.my_team.credits} · Spent: ${state.my_team.spent} · Held in live bids: ${state.my_team.credits - state.my_team.spent - state.my_team.available}</div>
@@ -467,7 +500,7 @@ async function renderAuctionDetail(view, id, silent) {
         <div class="card"><div class="card-title">🏛️ Participating Teams</div>
           ${state.teams.map((t) => `
             <div style="display:flex;justify-content:space-between;padding:.45rem 0;border-bottom:1px solid var(--border)">
-              <div><span class="team-logo">${esc(t.logo)}</span><strong>${esc(t.name)}</strong><div class="hint">@${esc(t.owner_username || '—')}</div></div>
+              <div>${logoChip(t.logo)}<strong>${esc(t.name)}</strong><div class="hint">@${esc(t.owner_username || '—')}</div></div>
               <div style="text-align:right"><span class="bid-amount">${t.credits - t.spent}</span><div class="hint">of ${t.credits}</div></div>
             </div>`).join('') || '<div class="empty-state">Teams get their credit ledger when the auction starts.</div>'}
         </div>
@@ -550,11 +583,11 @@ async function viewMatches(view) {
         ${statusTag(m.status)}
       </div>
       <div style="margin:.7rem 0"><span class="hint">PARTICIPATING TEAMS:</span>
-        <div style="margin-top:.3rem">${m.teams.map((t) => `<span class="team-logo">${esc(t.logo)}</span><span style="margin-right:.8rem">${esc(t.name)}</span>`).join('') || '<span class="hint">No teams registered yet</span>'}</div>
+        <div style="margin-top:.3rem">${m.teams.map((t) => `${logoChip(t.logo)}<span style="margin-right:.8rem">${esc(t.name)}</span>`).join('') || '<span class="hint">No teams registered yet</span>'}</div>
       </div>
       ${m.results.length ? `<div class="hint">RESULTS:</div>${m.results.map((r) => `
         <div style="display:flex;justify-content:space-between;padding:.2rem 0">
-          <span>${r.position === 1 ? '🏆' : '#' + r.position} <span class="team-logo">${esc(r.logo)}</span>${esc(r.name)}</span>
+          <span>${r.position === 1 ? '🏆' : '#' + r.position} ${logoChip(r.logo)}${esc(r.name)}</span>
           <span class="rank-cell">${r.kills} kills</span></div>`).join('')}` : ''}
       ${m.room_access && m.room_id ? `
         <div style="margin-top:.7rem;padding:.7rem;background:rgba(77,163,255,.06);border:1px solid rgba(77,163,255,.35);border-radius:10px">
@@ -677,7 +710,7 @@ async function renderTeamCenter(view, teamId) {
   const t = data.team;
   view.innerHTML = `
     <div class="page-head">
-      <h2 class="page-title"><span class="team-logo" style="font-size:1.6rem">${esc(t.logo)}</span> <span class="accent">${esc(t.name)}</span></h2>
+      <h2 class="page-title">${logoChip(t.logo, '1.6rem')} <span class="accent">${esc(t.name)}</span></h2>
       ${data.can_manage ? '<button class="btn btn-ghost btn-sm" id="edit-team-btn">✎ EDIT TEAM</button>' : ''}
     </div>
     <div id="edit-team-wrap"></div>
@@ -728,12 +761,22 @@ async function renderTeamCenter(view, teamId) {
     wrap.innerHTML = `<div class="card" style="margin-bottom:1rem"><div class="card-title">Edit Team</div>
       <div class="form-grid">
         <div><label>TEAM NAME</label><input id="et-name" value="${esc(t.name)}"></div>
-        <div><label>TEAM LOGO (EMOJI)</label><input id="et-logo" value="${esc(t.logo)}" maxlength="4"></div>
+        <div><label>TEAM LOGO</label><input type="file" id="et-logo-file" accept="image/png,image/jpeg,image/webp" hidden><div class="logo-upload-box" id="et-logo-box"><span>📁 click to upload new logo</span></div></div>
         <button class="btn btn-primary btn-sm" id="et-save">SAVE</button>
       </div></div>`;
+    $('#et-logo-box').addEventListener('click', () => $('#et-logo-file').click());
+    $('#et-logo-file').addEventListener('change', async () => {
+      try {
+        const durl = await readLogoFile($('#et-logo-file').files[0]);
+        if (durl) { $('#et-logo-box').innerHTML = `<img src="${esc(durl)}" alt="">`; $('#et-logo-box').classList.add('has-logo'); }
+      } catch (err) { toast(err.message, 'error'); }
+    });
     $('#et-save').addEventListener('click', async () => {
       try {
-        const d = await api(`/api/teams/${t.id}`, { method: 'PATCH', body: { name: $('#et-name').value, logo: $('#et-logo').value } });
+        const etLogo = await readLogoFile($('#et-logo-file').files[0]);
+        const etBody = { name: $('#et-name').value };
+        if (etLogo) etBody.logo = etLogo;
+        const d = await api(`/api/teams/${t.id}`, { method: 'PATCH', body: etBody });
         toast(d.message, 'success');
         const me = await api('/api/auth/me');
         ME = me.user;
@@ -759,7 +802,7 @@ async function viewChat(view) {
     const { teams } = await api('/api/teams');
     if (teams.length) teamId = teams[0].id;
     view.innerHTML = `<div class="page-head"><h2 class="page-title">💬 TEAM <span class="accent">CHAT</span></h2></div>
-      <div class="subtabs">${teams.map((t) => `<button class="subtab ${t.id === teamId ? 'active' : ''}" data-tc="${t.id}">${esc(t.logo)} ${esc(t.name)}</button>`).join('')}</div>
+      <div class="subtabs">${teams.map((t) => `<button class="subtab ${t.id === teamId ? 'active' : ''}" data-tc="${t.id}">${logoChip(t.logo)} ${esc(t.name)}</button>`).join('')}</div>
       <div id="chat-mount"></div>`;
     $$('button[data-tc]', view).forEach((b) => b.addEventListener('click', () => { mountChat(Number(b.dataset.tc)); }));
   } else {
@@ -956,16 +999,26 @@ async function adminTeams(el) {
     <div class="card" style="margin-bottom:1rem"><div class="card-title">➕ Create Team</div>
       <div class="form-grid">
         <div><label>TEAM NAME</label><input id="nt-name"></div>
-        <div><label>LOGO (EMOJI)</label><input id="nt-logo" maxlength="4" value="🛡️"></div>
+        <div><label>TEAM LOGO</label><input type="file" id="nt-logo-file" accept="image/png,image/jpeg,image/webp" hidden><div class="logo-upload-box" id="nt-logo-box"><span>📁 click to upload logo</span></div></div>
         <div><label>MANAGER USERNAME (OPTIONAL — e.g. YOURSELF)</label><input id="nt-owner" placeholder="username"></div>
         <button class="btn btn-primary btn-sm" id="nt-create">CREATE</button>
       </div></div>
     <div class="table-wrap"><table><thead><tr><th>TEAM</th><th>MANAGER</th><th>MEMBERS</th><th>KILLS</th><th>BOOYAHS</th><th>POINTS</th></tr></thead>
       <tbody>${teams.map((t) => `
-        <tr><td><span class="team-logo">${esc(t.logo)}</span><strong>${esc(t.name)}</strong></td>
+        <tr><td>${logoChip(t.logo)}<strong>${esc(t.name)}</strong></td>
         <td class="hint">${esc(t.owner_name || '—')} ${t.owner_username ? `@${esc(t.owner_username)}` : ''}</td>
         <td>${t.member_count}</td><td class="rank-cell" style="color:var(--red)">${t.total_kills}</td>
         <td>🏆 ${t.total_booyahs}</td><td class="rank-cell" style="color:var(--gold)">${t.kill_points}</td></tr>`).join('')}</tbody></table></div>`;
+  const ntBox = $('#nt-logo-box');
+  if (ntBox) {
+    ntBox.addEventListener('click', () => $('#nt-logo-file').click());
+    $('#nt-logo-file').addEventListener('change', async () => {
+      try {
+        const durl = await readLogoFile($('#nt-logo-file').files[0]);
+        if (durl) { ntBox.innerHTML = `<img src="${esc(durl)}" alt="">`; ntBox.classList.add('has-logo'); }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  }
   $('#nt-create').addEventListener('click', async () => {
     try {
       const ownerName = $('#nt-owner').value.trim();
@@ -975,7 +1028,8 @@ async function adminTeams(el) {
         const match = found.users.find((x) => x.username === ownerName);
         if (match) owner_user_id = match.id;
       }
-      const d = await api('/api/teams', { method: 'POST', body: { name: $('#nt-name').value, logo: $('#nt-logo').value, owner_user_id } });
+      const ntLogo = await readLogoFile($('#nt-logo-file').files[0]);
+      const d = await api('/api/teams', { method: 'POST', body: { name: $('#nt-name').value, logo: ntLogo, owner_user_id } });
       toast(d.message, 'success');
       const me = await api('/api/auth/me');
       ME = me.user;
@@ -1000,8 +1054,8 @@ async function adminRegistrations(el) {
             <div class="hint">contact: ${esc(r.contact || '—')}</div></div>
           <div class="inline-actions">
             <input id="mr-name-${r.id}" placeholder="Team name" value="${esc(r.display_name)}'s Team" style="padding:.4rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">
-            <input id="mr-logo-${r.id}" placeholder="Logo" maxlength="4" style="width:70px;padding:.4rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">
-            <button class="btn btn-primary btn-sm" data-mapprove="${r.id}">APPROVE</button>
+            ${isImageLogo(r.team_logo) ? `<img src="${esc(r.team_logo)}" alt="" style="max-height:34px;border-radius:6px">` : `<input id="mr-logo-${r.id}" placeholder="Logo" maxlength="4" style="width:70px;padding:.4rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">`}
+            <button class="btn btn-primary btn-sm" data-mapprove="${r.id}" data-logo="${esc(r.team_logo || '')}">APPROVE</button>
             <button class="btn btn-danger btn-sm" data-mreject="${r.id}">REJECT</button>
           </div>
         </div>`).join('') || '<div class="empty-state">No pending manager registrations.</div>'}
@@ -1020,7 +1074,7 @@ async function adminRegistrations(el) {
   $$('button[data-mapprove]', el).forEach((b) => b.addEventListener('click', async () => {
     try {
       const d = await api(`/api/manager-registrations/${b.dataset.mapprove}/approve`, { method: 'POST', body: {
-        team_name: $(`#mr-name-${b.dataset.mapprove}`).value, team_logo: $(`#mr-logo-${b.dataset.mapprove}`).value,
+        team_name: $(`#mr-name-${b.dataset.mapprove}`).value, team_logo: ($(`#mr-logo-${b.dataset.mapprove}`) && $(`#mr-logo-${b.dataset.mapprove}`).value) || b.dataset.logo || '',
       } });
       toast(d.message, 'success');
       adminRegistrations(el);
