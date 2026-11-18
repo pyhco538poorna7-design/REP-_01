@@ -216,6 +216,18 @@ tbody tr:hover { background: rgba(255, 122, 26, .04); }
 .rank-2 { color: #cfd6e4; }
 .rank-3 { color: #d98d4f; }
 .team-logo { font-size: 1.3rem; margin-right: .45rem; vertical-align: middle; }
+.team-logo.img { display: inline-flex; width: 1.5em; height: 1.5em; border-radius: 6px; overflow: hidden; background: var(--bg-3); border: 1px solid var(--border-lit); }
+.team-logo.img img { width: 100%; height: 100%; object-fit: cover; }
+.logo-upload-box {
+  display: flex; align-items: center; justify-content: center; min-height: 44px; padding: .55rem .8rem;
+  border: 1px dashed var(--border-lit); border-radius: 10px; background: var(--bg-1); color: var(--muted);
+  font-size: .8rem; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.logo-upload-box:hover { border-color: var(--orange-2); background: rgba(255, 122, 26, .05); }
+.logo-upload-box.has-logo { border-style: solid; border-color: var(--green); padding: .3rem; }
+.logo-upload-box.has-logo img, .logo-upload-box img { max-height: 56px; max-width: 100%; border-radius: 8px; object-fit: contain; }
+.logo-upload-box.avatar-upload { width: 84px; height: 84px; min-height: 84px; border-radius: 50%; margin: .4rem auto 0; text-align: center; }
+.tag-verified { color: var(--green); border-color: rgba(45, 217, 124, .5); background: rgba(45, 217, 124, .08); }
 .avatar-sm {
   width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   background: var(--bg-3); border: 1px solid var(--border-lit); font-size: .72rem; font-weight: 700;

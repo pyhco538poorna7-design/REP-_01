@@ -193,7 +193,7 @@ router.get('/chat/:teamId', requireAuth, (req, res) => {
   if (!team) return res.status(404).json({ error: 'Team not found.' });
   const isOwner = team.owner_user_id === req.user.id;
   const isMember = db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND player_user_id = ?').get(teamId, req.user.id);
-  if (!isOwner && !isMember && req.user.role !== 'ADMIN') {
+  if (!isOwner && !isMember) {
     return res.status(403).json({ error: 'This chat is private to the team.' });
   }
   const messages = db.prepare(`
@@ -208,7 +208,7 @@ router.post('/chat/:teamId', requireAuth, (req, res) => {
   if (!team) return res.status(404).json({ error: 'Team not found.' });
   const isOwner = team.owner_user_id === req.user.id;
   const isMember = db.prepare('SELECT 1 FROM team_members WHERE team_id = ? AND player_user_id = ?').get(teamId, req.user.id);
-  if (!isOwner && !isMember && req.user.role !== 'ADMIN') {
+  if (!isOwner && !isMember) {
     return res.status(403).json({ error: 'This chat is private to the team.' });
   }
   const content = String(req.body && req.body.content || '').trim().slice(0, 1000);

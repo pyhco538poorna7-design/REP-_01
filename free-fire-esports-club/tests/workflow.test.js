@@ -144,16 +144,35 @@ async function main() {
       team_name: 'Test United', team_logo: '🎮', contact: 'test@example.com',
     });
     check('manager registration', r.status === 201);
+    r = await newManager.req('POST', '/api/auth/register', {
+      username: 'newmanager2', password: 'secret1', role: 'MANAGER',
+      team_name: 'Test United', contact: 'x@example.com',
+    });
+    check('duplicate team name on manager register rejected', r.status === 409);
     await newManager.req('POST', '/api/auth/login', L('newmanager', 'secret1'));
     r = await newManager.req('GET', '/api/auth/me');
-    check('new manager has no team yet', !r.data.user.team);
-    r = await admin.req('GET', '/api/manager-registrations');
-    const pending = r.data.registrations.find((x) => x.username === 'newmanager');
-    check('admin sees pending manager registration', !!pending);
-    r = await admin.req('POST', `/api/manager-registrations/${pending.id}/approve`, { team_name: 'Test United', team_logo: '🎮' });
-    check('manager approved', r.status === 200);
-    r = await newManager.req('GET', '/api/auth/me');
-    check('approved manager now owns a team', r.data.user.team && r.data.user.team.name === 'Test United', JSON.stringify(r.data.user.team));
+    check('manager team created automatically', r.data.user.team && r.data.user.team.name === 'Test United', JSON.stringify(r.data.user.team));
+    r = await newManager.req('GET', '/api/teams/' + r.data.user.team.id);
+    check('auto team is auction-ready', r.status === 200 && r.data.can_manage === true);
+    r = await admin.req('GET', '/api/managers');
+    const mgrRow = r.data.managers.find((x) => x.username === 'newmanager');
+    check('admin managers list includes new manager', !!mgrRow && mgrRow.team_name === 'Test United', JSON.stringify(r.data.managers.slice(0, 2)));
+    check('managers list sorted by wins desc', r.data.managers.every((x, i) => i === 0 || r.data.managers[i - 1].wins >= x.wins));
+
+    console.log('\n== 3b. Profile pictures ==');
+    const png1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    r = await newPlayer.req('POST', '/api/auth/register', {
+      username: 'picplayer', password: 'secret1', role: 'PLAYER',
+      game_id: 'FF00000009', roles: ['Support', 'Sniper'], avatar: png1,
+    });
+    check('player registers with profile picture', r.status === 201, JSON.stringify(r.data));
+    const picClient = client();
+    r = await picClient.req('POST', '/api/auth/login', L('picplayer', 'secret1'));
+    check('avatar returned on login', r.data.user.avatar === png1, JSON.stringify(r.data.user.avatar));
+    r = await picClient.req('PUT', '/api/auth/avatar', { data: png1.replace('AAAA', 'AAAB') });
+    check('profile picture can be changed later', r.status === 200 && r.data.user.avatar !== png1, JSON.stringify(r.data));
+    r = await picClient.req('PUT', '/api/auth/avatar', { data: 'not-an-image' });
+    check('invalid avatar rejected', r.status === 400);
 
     console.log('\n== 4. Auction lifecycle + live bidding + credits ==');
     r = await admin.req('POST', '/api/auctions', { name: 'Test Auction', auction_date: '2025-12-01', start_time: '18:00', starting_credits: 5000 });
@@ -162,23 +181,29 @@ async function main() {
     r = await admin.req('GET', `/api/auctions/${auctionId}`);
     check('auction venue defaults to DC', r.data.auction.venue === 'DC', JSON.stringify(r.data.auction.venue));
 
+    r = await mgr1.req('PATCH', `/api/auctions/${auctionId}/dc-link`, { dc_link: 'https://discord.gg/testdc' });
+    check('manager cannot set DC link', r.status === 403);
+    r = await admin.req('PATCH', `/api/auctions/${auctionId}/dc-link`, { dc_link: 'https://discord.gg/testdc' });
+    check('admin sets DC link', r.status === 200);
     r = await p1.req('POST', `/api/auctions/${auctionId}/register`);
-    check('player registers for auction', r.status === 201, JSON.stringify(r.data));
+    check('player registers for auction (auto-approved)', r.status === 201, JSON.stringify(r.data));
+    check('register message says auto-approved', /automatically/.test(r.data.message || ''));
     r = await p1.req('POST', `/api/auctions/${auctionId}/register`);
     check('duplicate registration blocked', r.status === 409);
+    r = await p1.req('GET', `/api/auctions/${auctionId}`);
+    check('registered player sees DC link', r.data.auction.dc_link === 'https://discord.gg/testdc', JSON.stringify(r.data.auction.dc_link));
     await newPlayer.req('POST', '/api/auth/login', L('newplayer', 'secret1'));
     r = await newPlayer.req('POST', `/api/auctions/${auctionId}/register`);
     check('second player registers', r.status === 201, JSON.stringify(r.data));
+    r = await p3.req('GET', `/api/auctions/${auctionId}`);
+    check('outsider player gets DC link masked', r.data.auction.dc_link === '', JSON.stringify(r.data.auction.dc_link));
     r = await mgr1.req('GET', `/api/auctions/${auctionId}`);
-    const reg = r.data.players.find((p) => p.reg_status === 'pending' && p.username === 'newplayer');
-    check('player appears as pending', !!reg);
-    const reg1 = r.data.players.find((p) => p.reg_status === 'pending' && p.username === 'player001');
-    check('player001 appears as pending', !!reg1);
-    r = await admin.req('POST', `/api/auctions/${auctionId}/registrations/${reg.registration_id}/approve`);
-    check('admin approves registration', r.status === 200);
-    await admin.req('POST', `/api/auctions/${auctionId}/registrations/${reg1.registration_id}/approve`);
+    const det = r.data;
     r = await p1.req('GET', '/api/auctions');
-    check('player sees own registration status', r.data.auctions.find((a) => a.id === auctionId).my_registration === 'approved');
+    check('player sees own registration status (approved automatically)', r.data.auctions.find((a) => a.id === auctionId).my_registration === 'approved');
+    const reg = det.players.find((p) => p.username === 'newplayer' && p.reg_status === 'approved');
+    const reg1 = det.players.find((p) => p.username === 'player001' && p.reg_status === 'approved');
+    check('both players immediately approved in auction', !!reg && !!reg1, JSON.stringify(det.players.map((x) => `${x.username}:${x.reg_status}`)));
 
     r = await mgr1.req('POST', `/api/auctions/${auctionId}/bid`, { player_id: reg1.player_id, amount: 500 });
     check('bid on own team member rejected', r.status === 400);
@@ -300,6 +325,25 @@ async function main() {
     r = await mod.req('PATCH', `/api/matches/${matchId}`, { status: 'completed' });
     check('MOD updates match status', r.status === 200);
 
+    console.log('\n== 7b. Fair-play video proof ==');
+    r = await mgr2.req('POST', `/api/matches/${matchId}/proof`, { url: 'https://example.com/not-winner.mp4' });
+    check('non-winning team cannot upload proof', r.status === 403, JSON.stringify(r.data));
+    r = await mgr1.req('POST', `/api/matches/${matchId}/proof`, { url: 'https://example.com/proof-team1.mp4' });
+    check('winning manager uploads proof link', r.status === 201, JSON.stringify(r.data));
+    const proofId = r.data.proof && r.data.proof.id;
+    r = await p1.req('GET', `/api/matches/${matchId}/proof`);
+    check('team member can view proofs', r.status === 200 && r.data.proofs.length === 1 && r.data.proofs[0].status === 'pending');
+    r = await newManager.req('GET', `/api/matches/${matchId}/proof`);
+    check('non-participant denied proof list', r.status === 403);
+    r = await mod.req('POST', `/api/matches/${matchId}/proof/${proofId}/verify`);
+    check('only ADMIN can verify proof', r.status === 403);
+    r = await admin.req('POST', `/api/matches/${matchId}/proof/${proofId}/verify`);
+    check('admin verifies proof', r.status === 200);
+    r = await mgr1.req('POST', `/api/matches/${matchId}/proof`, { url: 'https://example.com/second.mp4' });
+    check('duplicate proof blocked while verified', r.status === 409);
+    r = await mgr1.req('GET', '/api/notifications');
+    check('manager notified of proof verification', r.data.notifications.some((n) => /Proof verified/.test(n.title)));
+
     console.log('\n== 8. Team Center privacy + chat ==');
     r = await mgr1.req('GET', '/api/teams/1');
     check('manager views own team center', r.status === 200 && r.data.team.id === 1 && r.data.members.length > 0);
@@ -312,6 +356,8 @@ async function main() {
     check('manager posts chat message', r.status === 201);
     r = await p1.req('GET', '/api/chat/1');
     check('member reads chat history', r.status === 200 && r.data.messages.some((x) => x.content === 'Practice at 8pm tonight'));
+    r = await admin.req('GET', '/api/chat/1');
+    check('admin denied other team chat (privacy)', r.status === 403, JSON.stringify(r.data));
     r = await mgr2.req('GET', '/api/chat/1');
     check('outsider denied team chat', r.status === 403);
 
@@ -333,17 +379,18 @@ async function main() {
     check('outsider cannot join private team channel', denied.type === 'error', JSON.stringify(denied));
     wsOutsider.close();
 
+    const wsAdmin = await admin.ws();
+    wsAdmin.send({ type: 'join', channel: 'team:1' });
+    const adminDenied = await wsAdmin.next(5000, 'error');
+    check('admin cannot join private team channel', adminDenied.type === 'error', JSON.stringify(adminDenied));
+    wsAdmin.close();
+
     // auction real-time
     r = await admin.req('POST', '/api/auctions', { name: 'RT Auction', auction_date: '2025-12-25', start_time: '18:00', starting_credits: 5000 });
     const rtAuction = r.data.auction_id;
     r = await p1.req('POST', `/api/auctions/${rtAuction}/register`);
     check('player registers for RT auction', r.status === 201);
     await newPlayer.req('POST', `/api/auctions/${rtAuction}/register`);
-    r = await mgr1.req('GET', `/api/auctions/${rtAuction}`);
-    const rtReg = r.data.players.find((p) => p.reg_status === 'pending' && p.username === 'player001');
-    await admin.req('POST', `/api/auctions/${rtAuction}/registrations/${rtReg.registration_id}/approve`);
-    const rtReg2 = r.data.players.find((p) => p.reg_status === 'pending' && p.username === 'newplayer');
-    await admin.req('POST', `/api/auctions/${rtAuction}/registrations/${rtReg2.registration_id}/approve`);
     await admin.req('POST', `/api/auctions/${rtAuction}/start`);
     const wsA = await mgr1.ws();
     await wsA.send({ type: 'join', channel: `auction:${rtAuction}` });
@@ -365,9 +412,6 @@ async function main() {
     r = await admin.req('POST', '/api/auctions', { name: 'Admin Play Auction', auction_date: '2025-12-30', start_time: '18:00', starting_credits: 5000 });
     const apAuction = r.data.auction_id;
     await p3.req('POST', `/api/auctions/${apAuction}/register`);
-    r = await admin.req('GET', `/api/auctions/${apAuction}`);
-    const apReg = r.data.players.find((p) => p.reg_status === 'pending');
-    await admin.req('POST', `/api/auctions/${apAuction}/registrations/${apReg.registration_id}/approve`);
     await admin.req('POST', `/api/auctions/${apAuction}/start`);
     r = await admin.req('GET', `/api/auctions/${apAuction}`);
     check('admin team gets same 5000 starting credits', r.data.my_team && r.data.my_team.credits === 5000, JSON.stringify(r.data.my_team));

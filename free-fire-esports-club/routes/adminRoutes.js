@@ -81,6 +81,19 @@ router.delete('/users/:id', adminOnly, (req, res) => {
 });
 
 // Manager registration approvals
+router.get('/managers', adminOnly, (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.username, u.display_name, u.status, u.role, mp.contact, mp.approved, u.created_at,
+      t.id AS team_id, t.name AS team_name, t.logo AS team_logo,
+      (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) AS members,
+      COALESCE((SELECT SUM(CASE WHEN mr.position = 1 THEN 1 ELSE 0 END) FROM match_results mr WHERE mr.team_id = t.id), 0) AS wins,
+      COALESCE((SELECT SUM(mr.kills) FROM match_results mr WHERE mr.team_id = t.id), 0) AS total_kills
+    FROM users u JOIN manager_profiles mp ON mp.user_id = u.id
+    JOIN teams t ON t.id = mp.team_id
+    ORDER BY wins DESC, total_kills DESC, u.username ASC`).all();
+  res.json({ managers: rows });
+});
+
 router.get('/manager-registrations', adminOnly, (req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.username, u.display_name, u.status, mp.contact, mp.approved, mp.team_id, t.name AS team_name

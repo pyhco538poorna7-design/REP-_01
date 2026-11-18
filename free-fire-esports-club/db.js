@@ -201,11 +201,29 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_bids_auction_player ON bids(auction_id, player_user_id);
 CREATE INDEX IF NOT EXISTS idx_results_team ON match_results(team_id);
 CREATE INDEX IF NOT EXISTS idx_messages_team ON messages(team_id, id);
+CREATE TABLE IF NOT EXISTS match_proofs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id INTEGER NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'file' CHECK (kind IN ('file','link')),
+  url TEXT NOT NULL DEFAULT '',
+  file_path TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','rejected')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, id);
 `);
 
 if (!db.prepare("SELECT name FROM pragma_table_info('auctions') WHERE name = 'venue'").get()) {
   db.exec("ALTER TABLE auctions ADD COLUMN venue TEXT NOT NULL DEFAULT 'DC'");
+}
+if (!db.prepare("SELECT name FROM pragma_table_info('users') WHERE name = 'avatar'").get()) {
+  db.exec("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
+}
+if (!db.prepare("SELECT name FROM pragma_table_info('auctions') WHERE name = 'dc_link'").get()) {
+  db.exec("ALTER TABLE auctions ADD COLUMN dc_link TEXT NOT NULL DEFAULT ''");
 }
 
 module.exports = db;

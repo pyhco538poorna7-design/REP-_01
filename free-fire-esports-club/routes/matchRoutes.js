@@ -1,10 +1,18 @@
 'use strict';
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const db = require('../db');
-const { requireAuth, requireRole, audit, notify, notifyAll } = require('../auth');
+const { requireAuth, requireRole, audit, notify, notifyRole, notifyAll } = require('../auth');
 const { getTeamForUser } = require('./auctionRoutes');
 
 const router = express.Router();
+
+const DATA_DIR = process.env.FF_DATA_DIR || path.join(__dirname, '..', 'data');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
 
 function canSeeRoom(user, matchId) {
   if (user.role === 'ADMIN' || user.role === 'MOD') return true;
@@ -145,6 +153,98 @@ router.post('/matches/:id/results', requireRole('MOD', 'ADMIN'), (req, res) => {
   }
   audit(req.user.id, 'match_result', { match_id: m.id, team_id: team.id, kills: k, position: pos });
   res.json({ message: 'Match result recorded.' });
+});
+
+// ---------- Fair-play video proof (winning team) ----------
+function isMatchParticipant(user, matchId) {
+  if (user.role === 'ADMIN' || user.role === 'MOD') return true;
+  if (user.role === 'MANAGER') {
+    const team = getTeamForUser(user.id);
+    return !!(team && db.prepare('SELECT id FROM match_teams WHERE match_id = ? AND team_id = ?').get(matchId, team.id));
+  }
+  if (user.role === 'PLAYER') {
+    const p = db.prepare('SELECT team_id FROM player_profiles WHERE user_id = ?').get(user.id);
+    return !!(p && p.team_id && db.prepare('SELECT id FROM match_teams WHERE match_id = ? AND team_id = ?').get(matchId, p.team_id));
+  }
+  return false;
+}
+
+function serializeProof(pr) {
+  const team = db.prepare('SELECT name, logo FROM teams WHERE id = ?').get(pr.team_id);
+  const uploader = db.prepare('SELECT display_name FROM users WHERE id = ?').get(pr.uploaded_by);
+  return {
+    id: pr.id, match_id: pr.match_id, team_id: pr.team_id, team_name: team ? team.name : '?',
+    team_logo: team ? team.logo : '', kind: pr.kind, url: pr.url,
+    file_url: pr.file_path ? `/uploads/${path.basename(pr.file_path)}` : '',
+    status: pr.status, uploaded_by_name: uploader ? uploader.display_name : '?', created_at: pr.created_at,
+  };
+}
+
+router.post('/matches/:id/proof', requireAuth, (req, res) => {
+  const m = db.prepare('SELECT * FROM matches WHERE id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'Match not found.' });
+  const team = getTeamForUser(req.user.id);
+  if (!team) return res.status(403).json({ error: 'Only team managers can upload proof.' });
+  const win = db.prepare('SELECT * FROM match_results WHERE match_id = ? AND team_id = ?').get(m.id, team.id);
+  if (!win || win.position !== 1) return res.status(403).json({ error: 'Only the winning team can upload proof for this match.' });
+  const exists = db.prepare("SELECT id FROM match_proofs WHERE match_id = ? AND team_id = ? AND status IN ('pending','verified')").get(m.id, team.id);
+  if (exists) return res.status(409).json({ error: 'Proof already uploaded for this match. Ask an admin to remove it first.' });
+
+  const body = req.body || {};
+  let kind, url = '', filePath = '';
+  if (body.data) {
+    const dataUrl = String(body.data);
+    const match = /^data:(video\/(mp4|webm|quicktime|x-matroska)|image\/gif);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!match) return res.status(400).json({ error: 'Video must be an mp4/webm/gif data URL.' });
+    const buf = Buffer.from(match[3], 'base64');
+    const maxBytes = 25 * 1024 * 1024;
+    if (buf.length > maxBytes) return res.status(400).json({ error: 'Video must be under 25 MB.' });
+    if (buf.length < 1024) return res.status(400).json({ error: 'Video file looks empty.' });
+    const ext = { 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'video/x-matroska': '.mkv', 'image/gif': '.gif' }[match[1]] || '.bin';
+    filePath = path.join(UPLOAD_DIR, `proof-${m.id}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+    fs.writeFileSync(filePath, buf);
+    kind = 'file';
+  } else if (body.url) {
+    url = String(body.url).trim();
+    if (!/^https?:\/\//.test(url) || url.length > 600) return res.status(400).json({ error: 'Proof link must be a valid URL.' });
+    kind = 'link';
+  } else {
+    return res.status(400).json({ error: 'Attach a video file or a video link.' });
+  }
+
+  const info = db.prepare('INSERT INTO match_proofs (match_id, team_id, uploaded_by, kind, url, file_path) VALUES (?,?,?,?,?,?)')
+    .run(m.id, team.id, req.user.id, kind, url, filePath);
+  audit(req.user.id, 'proof_upload', { match_id: m.id, team_id: team.id, kind });
+  notifyRole('ADMIN', 'match', 'Match proof uploaded', `${team.name} uploaded fair-play proof for ${m.tournament_name}. Verify it in the Matches tab.`);
+  const proof = db.prepare('SELECT * FROM match_proofs WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json({ message: 'Proof uploaded. An admin will verify it.', proof: serializeProof(proof) });
+});
+
+router.get('/matches/:id/proof', requireAuth, (req, res) => {
+  const m = db.prepare('SELECT id FROM matches WHERE id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'Match not found.' });
+  if (!isMatchParticipant(req.user, m.id)) return res.status(403).json({ error: 'You are not part of this match.' });
+  const rows = db.prepare('SELECT * FROM match_proofs WHERE match_id = ? ORDER BY id DESC').all(m.id);
+  res.json({ proofs: rows.map(serializeProof) });
+});
+
+router.post('/matches/:id/proof/:proofId/verify', requireRole('ADMIN'), (req, res) => {
+  const pr = db.prepare('SELECT * FROM match_proofs WHERE id = ? AND match_id = ?').get(req.params.proofId, req.params.id);
+  if (!pr) return res.status(404).json({ error: 'Proof not found.' });
+  db.prepare("UPDATE match_proofs SET status = 'verified' WHERE id = ?").run(pr.id);
+  audit(req.user.id, 'proof_verify', { proof_id: pr.id });
+  notify(pr.uploaded_by, 'match', 'Proof verified ✅', 'An admin verified your fair-play video. GG!');
+  res.json({ message: 'Proof verified.' });
+});
+
+router.post('/matches/:id/proof/:proofId/reject', requireRole('ADMIN'), (req, res) => {
+  const pr = db.prepare('SELECT * FROM match_proofs WHERE id = ? AND match_id = ?').get(req.params.proofId, req.params.id);
+  if (!pr) return res.status(404).json({ error: 'Proof not found.' });
+  if (pr.file_path && fs.existsSync(pr.file_path)) fs.unlinkSync(pr.file_path);
+  db.prepare("UPDATE match_proofs SET status = 'rejected', file_path = '' WHERE id = ?").run(pr.id);
+  audit(req.user.id, 'proof_reject', { proof_id: pr.id });
+  notify(pr.uploaded_by, 'match', 'Proof rejected', 'Your fair-play proof was rejected. Contact an admin if you think this is a mistake.');
+  res.json({ message: 'Proof rejected.' });
 });
 
 module.exports = { router };

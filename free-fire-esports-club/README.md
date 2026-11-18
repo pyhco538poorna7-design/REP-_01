@@ -64,6 +64,14 @@ Change these passwords before any real deployment.
 - **Top Team** — combined member kills, kill points (kills + 3 × Booyahs), Booyahs, rank.
 - **Top Team Booyah** — teams sorted by Booyah count.
 
+### Automations & new tools
+- **Automatic approvals** — player auction registrations and manager sign-ups are approved instantly; a new manager's team is created automatically with its own 5,000-credit ledger.
+- **Managers leaderboard (admin panel)** — managers ranked by wins (Booyahs), then total kills, with team logo, member count and contact info.
+- **Strict team-chat privacy** — team chats are visible only to that team's manager and members; even admins cannot read or join another team's chat.
+- **Fair-play video proofs** — after results are announced, the winning team can upload a gameplay video (up to 25 MB, stored server-side) or a video link; admins verify or reject it from the Matches tab.
+- **DC links (admin only)** — admin attaches a Discord invite link to each auction; it is visible only to participating managers, registered players and staff.
+- **Profile pictures** — every account can upload a real profile picture at registration or later from the Profile page; it appears in the nav, leaderboards and auction cards.
+
 ### Other
 - Private Team Center per manager (members, roles, credits, kills, Booyahs, purchases, matches).
 - Real-time private team chat with history, timestamps and access control.
@@ -72,7 +80,7 @@ Change these passwords before any real deployment.
 
 ## Tests
 
-The end-to-end suite spawns a real server on an isolated temp database and exercises 101 checks across auth, RBAC, auctions, credits, leaderboards, matches, chat, WebSockets, admin flows, notifications and scale:
+The end-to-end suite spawns a real server on an isolated temp database and exercises 120 checks across auth, RBAC, registration automation, auctions, credits, leaderboards, matches, video proofs, chat privacy, WebSockets, admin flows, notifications and scale:
 
 ```bash
 npm test

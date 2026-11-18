@@ -103,6 +103,7 @@ router.get('/auctions', requireAuth, (req, res) => {
       (SELECT COUNT(*) FROM auction_teams at WHERE at.auction_id = a.id) AS participating_teams
     FROM auctions a LEFT JOIN users u ON u.id = a.created_by
     ORDER BY a.id DESC`).all();
+  if (req.user.role !== 'ADMIN' && req.user.role !== 'MOD') rows.forEach((r) => { r.dc_link = ''; });
   if (req.user.role === 'PLAYER') {
     const mine = db.prepare('SELECT auction_id, status FROM auction_registrations WHERE player_user_id = ?').all(req.user.id);
     const map = new Map(mine.map((m) => [m.auction_id, m.status]));
@@ -117,12 +118,36 @@ router.post('/auctions', requireRole('ADMIN'), (req, res) => {
   const credits = parseInt(starting_credits, 10) || 5000;
   if (credits < 100) return res.status(400).json({ error: 'Starting credits must be at least 100.' });
   const venueName = String(venue || 'DC').trim() || 'DC';
-  const id = db.prepare('INSERT INTO auctions (name, auction_date, start_time, venue, starting_credits, status, created_by) VALUES (?,?,?,?,?,?,?)')
-    .run(name, auction_date, start_time, venueName, credits, 'upcoming', req.user.id).lastInsertRowid;
+  const dcLink = String(req.body && req.body.dc_link || '').trim();
+  if (dcLink && !/^https?:\/\//.test(dcLink)) return res.status(400).json({ error: 'DC link must be a valid URL starting with http.' });
+  const id = db.prepare('INSERT INTO auctions (name, auction_date, start_time, venue, starting_credits, dc_link, status, created_by) VALUES (?,?,?,?,?,?,?,?)')
+    .run(name, auction_date, start_time, venueName, credits, dcLink.slice(0, 500), 'upcoming', req.user.id).lastInsertRowid;
   audit(req.user.id, 'auction_create', { id, name, credits, venue: venueName });
   notifyAll('auction', 'New auction announced', `${name} — ${auction_date} at ${start_time} (Venue: ${venueName}). Starting budget: ${credits} credits per team.`);
   broadcastToChannel('auctions', { type: 'auctions_changed' });
   res.status(201).json({ message: 'Auction created.', auction_id: id });
+});
+
+function canSeeDcLink(user, auctionId) {
+  if (user.role === 'ADMIN' || user.role === 'MOD') return true;
+  if (user.role === 'MANAGER') {
+    return !!db.prepare('SELECT at.id FROM auction_teams at JOIN teams t ON t.id = at.team_id WHERE at.auction_id = ? AND t.owner_user_id = ?').get(auctionId, user.id);
+  }
+  if (user.role === 'PLAYER') {
+    return !!db.prepare("SELECT ar.id FROM auction_registrations ar WHERE ar.auction_id = ? AND ar.player_user_id = ? AND ar.status = 'approved'").get(auctionId, user.id);
+  }
+  return false;
+}
+
+router.patch('/auctions/:id/dc-link', requireRole('ADMIN'), (req, res) => {
+  const auction = db.prepare('SELECT id FROM auctions WHERE id = ?').get(req.params.id);
+  if (!auction) return res.status(404).json({ error: 'Auction not found.' });
+  const dcLink = String(req.body && req.body.dc_link || '').trim();
+  if (dcLink && !/^https?:\/\//.test(dcLink)) return res.status(400).json({ error: 'DC link must be a valid URL starting with http.' });
+  db.prepare('UPDATE auctions SET dc_link = ? WHERE id = ?').run(dcLink.slice(0, 500), auction.id);
+  audit(req.user.id, 'auction_dc_link', { auction_id: auction.id });
+  broadcastAuction(auction.id);
+  res.json({ message: dcLink ? 'DC link set.' : 'DC link removed.' });
 });
 
 router.post('/auctions/:id/start', requireRole('ADMIN'), (req, res) => {
@@ -199,6 +224,7 @@ router.get('/auctions/:id', requireAuth, (req, res) => {
   if (req.user.role === 'MOD') {
     state.players = state.players.map((p) => ({ ...p, current_bid: null, current_bid_team: null }));
   }
+  if (!canSeeDcLink(req.user, state.auction.id)) state.auction = { ...state.auction, dc_link: '' };
   res.json(state);
 });
 
@@ -214,11 +240,12 @@ router.post('/auctions/:id/register', requireRole('PLAYER'), (req, res) => {
   try { roles = JSON.parse(profile.roles || '[]'); } catch { roles = []; }
   if (!Array.isArray(roles) || roles.length < 2) return res.status(400).json({ error: 'Set 2-3 preferred roles on your profile before registering.' });
   db.prepare('INSERT INTO auction_registrations (auction_id, player_user_id, status, roles, previous_team) VALUES (?,?,?,?,?)')
-    .run(auction.id, req.user.id, 'pending', JSON.stringify(roles), profile.previous_team || '');
+    .run(auction.id, req.user.id, 'approved', JSON.stringify(roles), profile.previous_team || '');
   audit(req.user.id, 'auction_register', { auction_id: auction.id });
   notifyRole('ADMIN', 'auction', 'Auction registration', `${req.user.display_name} (@${req.user.username}) registered for ${auction.name}.`);
-  notify(req.user.id, 'auction', 'Registration received', `Your registration for ${auction.name} is pending approval.`);
-  res.status(201).json({ message: 'Auction registration submitted. Awaiting admin approval.' });
+  notify(req.user.id, 'auction', 'Auction registration approved', `You are approved for ${auction.name}. Good luck!`);
+  broadcastAuction(auction.id);
+  res.status(201).json({ message: 'Registration approved automatically. You are in the auction!' });
 });
 
 router.post('/auctions/:id/registrations/:regId/approve', requireRole('ADMIN'), (req, res) => {

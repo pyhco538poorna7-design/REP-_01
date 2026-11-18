@@ -22,6 +22,19 @@ function readLogoFile(file, maxBytes = 512 * 1024) {
     reader.readAsDataURL(file);
   });
 }
+function readVideoFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    const okType = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska'].includes(file.type) || file.type.startsWith('image/');
+    const okName = /\.(mp4|webm|mov|mkv|gif)$/i.test(file.name || '');
+    if (!okType && !okName) return reject(new Error('Proof must be an MP4 / WEBM / MOV / MKV video or a GIF.'));
+    if (file.size > 25 * 1024 * 1024) return reject(new Error('Proof video must be under 25 MB.'));
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the video file.'));
+    reader.readAsDataURL(file);
+  });
+}
 const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
 const fmtTime = (t) => t || '';
 const fmtDateTime = (s) => s ? s.replace('T', ' ').slice(0, 16) : '';
@@ -92,6 +105,7 @@ function onAuctionUpdate(msg) {
 const ALL_ROLES = ['Rusher', 'Support', 'Sniper', 'IGL', 'Entry Fragger', 'Assaulter'];
 let pickedRoles = [];
 let regTeamLogo = null;
+let regAvatar = null;
 
 function initAuthScreen() {
   $('#roles-picker').innerHTML = ALL_ROLES.map((r) => `<span class="role-chip" data-role="${r}">${r}</span>`).join('');
@@ -101,6 +115,20 @@ function initAuthScreen() {
     else if (pickedRoles.length < 3) { pickedRoles.push(r); chip.classList.add('on'); }
     else toast('You can pick at most 3 roles', 'error');
   }));
+  const avaBox = $('#avatar-upload-box');
+  if (avaBox) {
+    avaBox.addEventListener('click', () => $('#avatar-file').click());
+    $('#avatar-file').addEventListener('change', async () => {
+      try {
+        const durl = await readLogoFile($('#avatar-file').files[0]);
+        if (durl) {
+          regAvatar = durl;
+          avaBox.innerHTML = `<img src="${esc(durl)}" alt="">`;
+          avaBox.classList.add('has-logo');
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  }
   const logoBox = $('#logo-upload-box');
   if (logoBox) {
     logoBox.addEventListener('click', () => $('#team-logo-file').click());
@@ -139,7 +167,7 @@ function initAuthScreen() {
     const fd = new FormData(e.target);
     const role = $('.role-btn.active').dataset.role;
     const body = {
-      username: fd.get('username'), password: fd.get('password'), role,
+      username: fd.get('username'), password: fd.get('password'), role, avatar: regAvatar || '',
     };
     if (role === 'PLAYER') { body.game_id = fd.get('game_id'); body.roles = pickedRoles; }
     else { body.team_name = fd.get('team_name'); body.team_logo = regTeamLogo || ''; body.contact = fd.get('contact'); }
@@ -190,8 +218,9 @@ function renderNav() {
   $$('.nav-tab').forEach((b) => b.addEventListener('click', () => { location.hash = b.dataset.hash; }));
   $('#user-name').textContent = ME.display_name;
   $('#user-role').textContent = ME.role;
-  $('#user-avatar').innerHTML = (ME.player && ME.player.avatar)
-    ? `<img src="${esc(ME.player.avatar)}" alt="">` : esc((ME.display_name || '?')[0].toUpperCase());
+  const myAvatar = ME.avatar || (ME.player && ME.player.avatar);
+  $('#user-avatar').innerHTML = myAvatar
+    ? `<img src="${esc(myAvatar)}" alt="">` : esc((ME.display_name || '?')[0].toUpperCase());
 }
 
 function enterApp(user) {
@@ -481,6 +510,14 @@ async function renderAuctionDetail(view, id, silent) {
       </div></div>` : ''}
     ${a.status === 'paused' ? `<div class="auction-live-banner" style="background:linear-gradient(135deg,#2b5aa8,#4da3ff)"><h2>⏸ AUCTION PAUSED</h2>
       ${isAdmin ? '<button class="btn btn-ghost btn-sm" data-auction-ctl="resume">▶ RESUME</button>' : ''}</div>` : ''}
+    ${(a.dc_link || isAdmin) ? `
+      <div class="card" style="margin-bottom:1rem;border:1px solid rgba(88,101,242,.5);background:rgba(88,101,242,.07)">
+        <div class="card-title">💬 DC LINK</div>
+        ${a.dc_link ? `<p style="margin:.2rem 0">Auction venue is <strong>DC</strong> — everyone joins here: <a href="${esc(a.dc_link)}" target="_blank" rel="noopener"><strong class="accent">OPEN DC LINK →</strong></a></p>` : '<p class="hint">No DC link set for this auction yet.</p>'}
+        ${isAdmin ? `<div class="inline-actions" style="margin-top:.5rem">
+          <input id="dc-link-input" placeholder="https://discord.gg/your-invite" value="${esc(a.dc_link || '')}" style="flex:1;min-width:220px;padding:.5rem .7rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">
+          <button class="btn btn-primary btn-sm" id="dc-save">SAVE DC LINK</button></div>` : ''}
+      </div>` : ''}
     <div class="grid" style="grid-template-columns: 2fr 1fr; align-items:start">
       <div>
         ${state.players.filter((p) => p.reg_status === 'approved').map(playerCard).join('')
@@ -547,6 +584,14 @@ async function renderAuctionDetail(view, id, silent) {
       renderAuctionDetail(view, id);
     } catch (err) { toast(err.message, 'error'); }
   }));
+  const dcSave = $('#dc-save', view);
+  if (dcSave) dcSave.addEventListener('click', async () => {
+    try {
+      const d = await api(`/api/auctions/${id}/dc-link`, { method: 'PATCH', body: { dc_link: $('#dc-link-input', view).value.trim() } });
+      toast(d.message, 'success');
+      renderAuctionDetail(view, id);
+    } catch (err) { toast(err.message, 'error'); }
+  });
   $$('button[data-auction-ctl]', view).forEach((b) => b.addEventListener('click', async () => {
     try {
       const data = await api(`/api/auctions/${id}/${b.dataset.auctionCtl}`, { method: 'POST' });
@@ -572,8 +617,44 @@ async function viewMatches(view) {
   const { matches } = await api('/api/matches');
   const isManager = ME.role === 'MANAGER' || (ME.role === 'ADMIN' && ME.team);
   const canModerate = ME.role === 'MOD' || ME.role === 'ADMIN';
+  const myTeamId = ME.team ? ME.team.id : null;
+  const proofsMap = {};
+  await Promise.all(matches.filter((m) => m.results && m.results.length).map(async (m) => {
+    try { proofsMap[m.id] = (await api(`/api/matches/${m.id}/proof`)).proofs; } catch { proofsMap[m.id] = []; }
+  }));
   const upcoming = matches.filter((m) => m.status === 'upcoming');
   const others = matches.filter((m) => m.status !== 'upcoming');
+
+  const proofBlock = (m) => {
+    const proofs = proofsMap[m.id] || [];
+    const iWon = m.results && m.results.length && myTeamId && m.results.some((r) => r.position === 1 && r.team_id === myTeamId);
+    const goAround = proofs.length || iWon;
+    if (!goAround) return '';
+    return `
+      <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.7rem">
+        <div class="hint" style="color:var(--gold)">🎥 FAIR-PLAY PROOF</div>
+        ${proofs.map((p) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.4rem 0;flex-wrap:wrap">
+            <span>${logoChip(p.team_logo)}${esc(p.team_name)} · ${p.kind === 'link' ? '🔗 video link' : '🎞 video file'}
+              <span class="tag-tint">${esc(p.uploaded_by_name)}</span></span>
+            <span class="inline-actions">
+              <span class="badge-tag tag-${p.status}">${p.status.toUpperCase()}</span>
+              ${p.kind === 'link' ? `<a class="btn btn-ghost btn-sm" href="${esc(p.url)}" target="_blank" rel="noopener">WATCH</a>` : `<a class="btn btn-ghost btn-sm" href="${esc(p.file_url)}" target="_blank" rel="noopener">WATCH</a>`}
+              ${ME.role === 'ADMIN' && p.status !== 'verified' ? `<button class="btn btn-primary btn-sm" data-pverify="${p.id}" data-mid="${m.id}">✔ VERIFY</button>
+                <button class="btn btn-danger btn-sm" data-preject="${p.id}" data-mid="${m.id}">✖ REJECT</button>` : ''}
+            </span>
+          </div>`).join('')}
+        ${iWon && !proofs.some((p) => p.status === 'pending' || p.status === 'verified') ? `
+          <div class="inline-actions" style="margin-top:.5rem;flex-wrap:wrap">
+            <input type="file" id="proof-file-${m.id}" accept="video/mp4,video/webm,video/quicktime,video/x-matroska,image/gif" hidden>
+            <label for="proof-file-${m.id}" class="logo-upload-box" style="cursor:pointer">🎞 choose proof video (max 25 MB)</label>
+            <span class="hint">or</span>
+            <input id="proof-link-${m.id}" placeholder="paste video link (drive/yt/dc)" style="min-width:200px;padding:.45rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">
+            <button class="btn btn-gold btn-sm" data-proofup="${m.id}">UPLOAD PROOF</button>
+          </div>
+          <div class="hint" style="margin-top:.3rem">You won this match 🏆 — upload your gameplay video to prove fair play. An admin will verify it.</div>` : ''}
+      </div>`;
+  };
 
   const matchCard = (m) => `
     <div class="card hover">
@@ -589,6 +670,7 @@ async function viewMatches(view) {
         <div style="display:flex;justify-content:space-between;padding:.2rem 0">
           <span>${r.position === 1 ? '🏆' : '#' + r.position} ${logoChip(r.logo)}${esc(r.name)}</span>
           <span class="rank-cell">${r.kills} kills</span></div>`).join('')}` : ''}
+      ${proofBlock(m)}
       ${m.room_access && m.room_id ? `
         <div style="margin-top:.7rem;padding:.7rem;background:rgba(77,163,255,.06);border:1px solid rgba(77,163,255,.35);border-radius:10px">
           <div class="hint" style="color:var(--blue)">🔒 ROOM CREDENTIALS (authorized only)</div>
@@ -622,6 +704,30 @@ async function viewMatches(view) {
     catch (err) { toast(err.message, 'error'); }
   }));
   $$('button[data-manage]', view).forEach((b) => b.addEventListener('click', () => toggleMatchManage(view, Number(b.dataset.manage), matches)));
+  $$('button[data-pverify]', view).forEach((b) => b.addEventListener('click', async () => {
+    try { const d = await api(`/api/matches/${b.dataset.mid}/proof/${b.dataset.pverify}/verify`, { method: 'POST' }); toast(d.message, 'success'); viewMatches(view); }
+    catch (err) { toast(err.message, 'error'); }
+  }));
+  $$('button[data-preject]', view).forEach((b) => b.addEventListener('click', async () => {
+    try { const d = await api(`/api/matches/${b.dataset.mid}/proof/${b.dataset.preject}/reject`, { method: 'POST' }); toast(d.message); viewMatches(view); }
+    catch (err) { toast(err.message, 'error'); }
+  }));
+  $$('button[data-proofup]', view).forEach((b) => b.addEventListener('click', async () => {
+    const mid = b.dataset.proofup;
+    const linkEl = $(`#proof-link-${mid}`, view);
+    const fileEl = $(`#proof-file-${mid}`, view);
+    try {
+      let body;
+      if (fileEl && fileEl.files[0]) {
+        body = { data: await readVideoFile(fileEl.files[0]) };
+      } else if (linkEl && linkEl.value.trim()) {
+        body = { url: linkEl.value.trim() };
+      } else { toast('Pick a video file or paste a link first.', 'error'); return; }
+      const d = await api(`/api/matches/${mid}/proof`, { method: 'POST', body });
+      toast(d.message, 'success');
+      viewMatches(view);
+    } catch (err) { toast(err.message, 'error'); }
+  }));
   const nb = $('#new-match-btn', view);
   if (nb) nb.addEventListener('click', () => {
     const wrap = $('#new-match-wrap');
@@ -898,7 +1004,7 @@ async function viewAnnouncements(view) {
 async function viewAdmin(view, tab) {
   const isAdmin = ME.role === 'ADMIN';
   const tabs = isAdmin
-    ? [['overview', '📊 OVERVIEW'], ['users', '👥 USERS'], ['teams', '🛡️ TEAMS'], ['registrations', '✅ REGISTRATIONS'], ['auctions', '🔨 AUCTIONS'], ['audit', '📜 AUDIT LOGS']]
+    ? [['overview', '📊 OVERVIEW'], ['users', '👥 USERS'], ['teams', '🛡️ TEAMS'], ['registrations', '📋 MANAGERS'], ['auctions', '🔨 AUCTIONS'], ['audit', '📜 AUDIT LOGS']]
     : [['matches', '⚔️ MATCHES'], ['announcements', '📢 ANNOUNCEMENTS']];
   if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
   view.innerHTML = `
@@ -1040,65 +1146,23 @@ async function adminTeams(el) {
 }
 
 async function adminRegistrations(el) {
-  const [{ registrations }, { auctions }] = await Promise.all([api('/api/manager-registrations'), api('/api/auctions')]);
-  const pendingRegs = [];
-  for (const a of auctions) {
-    const state = await api(`/api/auctions/${a.id}`);
-    state.players.filter((p) => p.reg_status === 'pending').forEach((p) => pendingRegs.push({ ...p, auction: a }));
-  }
+  const [{ managers }] = await Promise.all([api('/api/managers')]);
+  const medal = (i) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
   el.innerHTML = `
-    <div class="card" style="margin-bottom:1rem"><div class="card-title">📋 Manager Registrations (awaiting approval)</div>
-      ${registrations.map((r) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
-          <div><strong>${esc(r.display_name)}</strong> <span class="hint">@${esc(r.username)}</span>
-            <div class="hint">contact: ${esc(r.contact || '—')}</div></div>
-          <div class="inline-actions">
-            <input id="mr-name-${r.id}" placeholder="Team name" value="${esc(r.display_name)}'s Team" style="padding:.4rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">
-            ${isImageLogo(r.team_logo) ? `<img src="${esc(r.team_logo)}" alt="" style="max-height:34px;border-radius:6px">` : `<input id="mr-logo-${r.id}" placeholder="Logo" maxlength="4" style="width:70px;padding:.4rem .6rem;background:var(--bg-1);border:1px solid var(--border-lit);border-radius:8px;color:var(--text)">`}
-            <button class="btn btn-primary btn-sm" data-mapprove="${r.id}" data-logo="${esc(r.team_logo || '')}">APPROVE</button>
-            <button class="btn btn-danger btn-sm" data-mreject="${r.id}">REJECT</button>
-          </div>
-        </div>`).join('') || '<div class="empty-state">No pending manager registrations.</div>'}
-    </div>
-    <div class="card"><div class="card-title">🎮 Player Auction Registrations (pending)</div>
-      ${pendingRegs.map((p) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
-          <div><strong>${esc(p.player_name)}</strong> <span class="hint mono">${esc(p.game_id)}</span>
-            <div class="hint">${esc(p.auction.name)} · ${p.roles.map(roleTag).join(' ')} · ${p.kills} kills</div></div>
-          <div class="inline-actions">
-            <button class="btn btn-primary btn-sm" data-papprove="${p.registration_id}" data-auction="${p.auction.id}">APPROVE</button>
-            <button class="btn btn-danger btn-sm" data-preject="${p.registration_id}" data-auction="${p.auction.id}">REJECT</button>
-          </div>
-        </div>`).join('') || '<div class="empty-state">No pending player registrations.</div>'}
+    <div class="card" style="margin-bottom:1rem"><div class="card-title">🏆 MANAGERS <span class="accent">LEADERBOARD</span></div>
+      <p class="hint" style="margin:.2rem 0 .8rem">⚡ Approvals are <strong>automatic</strong> now — every new manager instantly gets a team with 5,000 auction credits. Sorted by most wins.</p>
+      <div class="table-wrap"><table><thead><tr><th>RANK</th><th>MANAGER</th><th>TEAM</th><th>PLAYERS</th><th>🏆 WINS</th><th>KILLS</th><th>STATUS</th></tr></thead>
+      <tbody>${managers.map((m, i) => `
+        <tr>
+          <td><strong>${medal(i)}</strong></td>
+          <td><strong>${esc(m.display_name)}</strong> <span class="hint">@${esc(m.username)}</span>${m.contact ? `<div class="hint">contact: ${esc(m.contact)}</div>` : ''}</td>
+          <td>${logoChip(m.team_logo)}${esc(m.team_name || '—')}</td>
+          <td>${m.members}</td>
+          <td><span class="bid-amount">${m.wins}</span></td>
+          <td class="rank-cell">${m.total_kills}</td>
+          <td>${m.status === 'active' ? '<span class="badge-tag tag-approved">ACTIVE</span>' : '<span class="badge-tag tag-rejected">SUSPENDED</span>'}</td>
+        </tr>`).join('') || '<tr><td colspan="7"><div class="empty-state">No managers registered yet.</div></td></tr>'}</tbody></table></div>
     </div>`;
-  $$('button[data-mapprove]', el).forEach((b) => b.addEventListener('click', async () => {
-    try {
-      const d = await api(`/api/manager-registrations/${b.dataset.mapprove}/approve`, { method: 'POST', body: {
-        team_name: $(`#mr-name-${b.dataset.mapprove}`).value, team_logo: ($(`#mr-logo-${b.dataset.mapprove}`) && $(`#mr-logo-${b.dataset.mapprove}`).value) || b.dataset.logo || '',
-      } });
-      toast(d.message, 'success');
-      adminRegistrations(el);
-    } catch (err) { toast(err.message, 'error'); }
-  }));
-  $$('button[data-mreject]', el).forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Reject and remove this manager account?')) return;
-    try { const d = await api(`/api/manager-registrations/${b.dataset.mreject}/reject`, { method: 'POST' }); toast(d.message); adminRegistrations(el); }
-    catch (err) { toast(err.message, 'error'); }
-  }));
-  $$('button[data-papprove]', el).forEach((b) => b.addEventListener('click', async () => {
-    try {
-      const d = await api(`/api/auctions/${b.dataset.auction}/registrations/${b.dataset.papprove}/approve`, { method: 'POST' });
-      toast(d.message, 'success');
-      adminRegistrations(el);
-    } catch (err) { toast(err.message, 'error'); }
-  }));
-  $$('button[data-preject]', el).forEach((b) => b.addEventListener('click', async () => {
-    try {
-      const d = await api(`/api/auctions/${b.dataset.auction}/registrations/${b.dataset.preject}/reject`, { method: 'POST' });
-      toast(d.message);
-      adminRegistrations(el);
-    } catch (err) { toast(err.message, 'error'); }
-  }));
 }
 
 async function adminAuctions(el) {
@@ -1110,6 +1174,7 @@ async function adminAuctions(el) {
         <div><label>DATE</label><input id="ca-date" type="date"></div>
         <div><label>STARTING TIME</label><input id="ca-time" type="time" value="18:00"></div>
         <div><label>VENUE</label><input id="ca-venue" value="DC" placeholder="DC"></div>
+        <div><label>DC LINK (OPTIONAL)</label><input id="ca-dc" placeholder="https://discord.gg/..."></div>
         <div><label>STARTING CREDITS</label><input id="ca-credits" type="number" value="5000"></div>
         <button class="btn btn-primary btn-sm" id="ca-create">PUBLISH AUCTION</button>
       </div>
@@ -1133,6 +1198,7 @@ async function adminAuctions(el) {
       const d = await api('/api/auctions', { method: 'POST', body: {
         name: $('#ca-name').value, auction_date: $('#ca-date').value,
         start_time: $('#ca-time').value, venue: $('#ca-venue').value || 'DC',
+        dc_link: ($('#ca-dc') && $('#ca-dc').value.trim()) || '',
         starting_credits: Number($('#ca-credits').value),
       } });
       toast(d.message, 'success');
@@ -1178,9 +1244,13 @@ async function viewProfile(view) {
         ${u.manager ? `<div class="hint" style="margin-top:.6rem">Contact: ${esc(u.manager.contact || '—')}</div>` : ''}
         <div class="form-grid" style="margin-top:1rem">
           <div><label>DISPLAY NAME</label><input id="pf-name" value="${esc(u.display_name)}"></div>
-          ${u.player ? `<div><label>AVATAR URL</label><input id="pf-avatar" value="${esc(u.player.avatar || '')}" placeholder="https://…"></div>
-          <div><label>PREVIOUS TEAM</label><input id="pf-prev" value="${esc(u.player.previous_team || '')}"></div>` : ''}
+          ${u.player ? `<div><label>PREVIOUS TEAM</label><input id="pf-prev" value="${esc(u.player.previous_team || '')}"></div>` : ''}
           ${u.manager ? `<div><label>CONTACT</label><input id="pf-contact" value="${esc(u.manager.contact || '')}"></div>` : ''}
+          <div style="grid-column:1/-1">
+            <label class="file-label" style="display:block">PROFILE PICTURE (IMAGE)
+              <input type="file" id="pf-avatar-file" accept="image/png,image/jpeg,image/webp" hidden>
+              <div class="logo-upload-box avatar-upload" id="pf-avatar-box">${u.avatar ? `<img src="${esc(u.avatar)}" alt="">` : '<span>📁 click to upload your profile pic</span>'}</div></label>
+          </div>
           <button class="btn btn-primary btn-sm" id="pf-save">SAVE PROFILE</button>
         </div>
       </div>
@@ -1193,10 +1263,26 @@ async function viewProfile(view) {
         <p class="hint" style="margin-top:.8rem">For your security, sessions expire automatically after 12 hours. You will need to log in again after logging out or when your session expires.</p>
       </div>
     </div>`;
+  const pfAvatarBox = $('#pf-avatar-box');
+  if (pfAvatarBox) {
+    pfAvatarBox.addEventListener('click', () => $('#pf-avatar-file').click());
+    $('#pf-avatar-file').addEventListener('change', async () => {
+      try {
+        const durl = await readLogoFile($('#pf-avatar-file').files[0]);
+        if (durl) {
+          const d = await api('/api/auth/avatar', { method: 'PUT', body: { data: durl } });
+          ME = d.user;
+          toast(d.message, 'success');
+          renderNav();
+          viewProfile(view);
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  }
   $('#pf-save').addEventListener('click', async () => {
     try {
       const body = { display_name: $('#pf-name').value };
-      if (u.player) { body.avatar = $('#pf-avatar').value; body.previous_team = $('#pf-prev').value; }
+      if (u.player) { body.previous_team = $('#pf-prev').value; }
       if (u.manager) body.contact = $('#pf-contact').value;
       const d = await api('/api/auth/profile', { method: 'PUT', body });
       ME = d.user;

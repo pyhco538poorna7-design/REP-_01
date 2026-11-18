@@ -41,9 +41,9 @@ function broadcastToChannel(channel, payload) {
 }
 
 function canJoinChannel(user, channel) {
-  if (user.role === 'ADMIN') return true;
   const auctionMatch = channel.match(/^auction:(\d+)$/);
   if (auctionMatch) {
+    if (user.role === 'ADMIN') return true;
     if (user.role === 'MOD') return false;
     if (user.role === 'MANAGER') {
       return !!db.prepare(`
