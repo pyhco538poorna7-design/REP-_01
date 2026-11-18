@@ -26,7 +26,7 @@ const TOURNAMENTS = ['FFWS Qualifiers', 'Clash Squad Cup', 'Booyah League S8', '
 
 function main() {
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
-  if (userCount > 0) { console.log('Database already seeded.'); return; }
+  if (userCount > 1) { console.log('Database already seeded.'); return; }
 
   const hash = (p) => bcrypt.hashSync(p, 10);
   const adminHash = hash('admin123');
@@ -48,7 +48,10 @@ function main() {
 
   const seedAll = db.transaction(() => {
     // ---- Admin & MOD ----
-    const admin = insUser.run('admin', adminHash, 'ADMIN', 'Club Owner').lastInsertRowid;
+    const existingAdmin = db.prepare("SELECT id, role, status FROM users WHERE username = 'admin'").get();
+    const admin = existingAdmin && existingAdmin.role === 'ADMIN' && existingAdmin.status === 'active'
+      ? existingAdmin.id
+      : db.prepare("INSERT OR REPLACE INTO users (username, password_hash, role, display_name, status) VALUES ('admin', ?, 'ADMIN', 'Club Owner', 'active')").run(adminHash).lastInsertRowid;
     const mod = insUser.run('mod', modHash, 'MOD', 'Head Moderator').lastInsertRowid;
 
     // ---- Teams + Managers ----

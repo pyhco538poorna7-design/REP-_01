@@ -4,8 +4,10 @@ const http = require('http');
 const path = require('path');
 const db = require('./db');
 if (!db.prepare('SELECT COUNT(*) AS c FROM users').get().c) {
-  console.log('Empty database detected — seeding demo data...');
-  require('./seed');
+  const bcrypt = require('bcryptjs');
+  db.prepare("INSERT INTO users (username, password_hash, role, display_name) VALUES ('admin', ?, 'ADMIN', 'Admin')")
+    .run(bcrypt.hashSync('admin123', 10));
+  console.log('Fresh database — created initial ADMIN account (admin / admin123). Change this password immediately.');
 }
 const { attachUser } = require('./auth');
 const { handleUpgrade } = require('./ws');
