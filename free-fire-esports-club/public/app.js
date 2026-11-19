@@ -1224,7 +1224,98 @@ async function adminAudit(el) {
 }
 
 async function modMatches(el) {
-  await viewMatches(el);
+  const { matches } = await api('/api/matches');
+  const matchCard = (m) => `
+    <div class="card hover">
+      <div style="display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start;flex-wrap:wrap">
+        <div><h3 style="font-size:1rem">${esc(m.tournament_name)}</h3>
+          <div class="hint">📅 ${fmtDate(m.match_date)} · 🕕 ${fmtTime(m.match_time)} · ${m.teams.length} team(s)</div></div>
+        ${statusTag(m.status)}
+      </div>
+      <div class="card-title" style="margin:.8rem 0 .4rem">🔒 ROOM ID &amp; PASSWORD</div>
+      <div class="form-grid">
+        <div><label>ROOM ID</label><input id="mr-id-${m.id}" value="${esc(m.room_id || '')}" placeholder="room id"></div>
+        <div><label>ROOM PASSWORD</label><input id="mr-pass-${m.id}" value="${esc(m.room_password || '')}" placeholder="room password"></div>
+        <div><label>STATUS</label>
+          <select id="mr-status-${m.id}">${['upcoming', 'live', 'completed'].map((st) => `<option value="${st}" ${m.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>
+        <div style="display:flex;align-items:center;gap:.4rem;padding-bottom:.4rem">
+          <input type="checkbox" id="mr-pub-${m.id}" style="width:auto" ${m.room_published ? 'checked' : ''}>
+          <label style="margin:0">PUBLISH TO TEAMS</label></div>
+        <button class="btn btn-primary btn-sm" data-mroom="${m.id}">💾 SAVE ROOM INFO</button>
+      </div>
+      <div class="card-title" style="margin:.8rem 0 .4rem">🏆 POST MATCH RESULTS</div>
+      ${m.results.length ? m.results.map((r) => `
+        <div style="display:flex;justify-content:space-between;padding:.25rem 0">
+          <span>${r.position === 1 ? '🏆' : '#' + r.position} ${logoChip(r.logo)}${esc(r.name)}</span>
+          <span class="rank-cell">${r.kills} kills</span></div>`).join('') : '<div class="hint" style="margin-bottom:.4rem">No results posted yet.</div>'}
+      <div class="form-grid" style="margin-top:.5rem">
+        <div><label>TEAM</label><select id="mrt-${m.id}">${m.teams.map((t) => `<option value="${t.team_id}">${esc(t.name)}</option>`).join('') || '<option value="">No teams registered</option>'}</select></div>
+        <div><label>KILLS</label><input id="mrk-${m.id}" type="number" value="0" min="0"></div>
+        <div><label>POSITION</label><input id="mrp-${m.id}" type="number" value="1" min="1"></div>
+        <button class="btn btn-gold btn-sm" data-mresult="${m.id}" ${m.teams.length ? '' : 'disabled'}>✍ POST RESULT</button>
+      </div>
+      <p class="hint" style="margin-top:.5rem">🛡 Only participating teams and admins can see the room credentials. Position 1 = 🏆 BOOYAH (counts as a win).</p>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="page-head" style="margin-bottom:.8rem">
+      <div class="card-title" style="margin:0">⚔️ MATCHES YOU CONTROL</div>
+      <button class="btn btn-primary" id="new-match-btn">+ SCHEDULE MATCH</button></div>
+    <div id="new-match-wrap"></div>
+    <div class="grid grid-2">${matches.map(matchCard).join('') || '<div class="empty-state">No matches yet. Schedule the first one!</div>'}</div>`;
+
+  const nb = $('#new-match-btn', el);
+  if (nb) nb.addEventListener('click', () => {
+    const wrap = $('#new-match-wrap', el);
+    if (wrap.innerHTML) { wrap.innerHTML = ''; return; }
+    const today = new Date().toISOString().slice(0, 10);
+    wrap.innerHTML = `<div class="card" style="margin-bottom:1rem"><div class="card-title">Schedule New Match</div>
+      <div class="form-grid">
+        <div><label>TOURNAMENT NAME</label><input id="m-tour" placeholder="FFWS Qualifiers"></div>
+        <div><label>DATE</label><input id="m-date" type="date" value="${today}"></div>
+        <div><label>TIME</label><input id="m-time" type="time" value="19:00"></div>
+        <div><label>CUSTOM ROOM ID</label><input id="m-room" placeholder="enter room id"></div>
+        <div><label>ROOM PASSWORD</label><input id="m-pass" placeholder="enter password"></div>
+        <div style="display:flex;align-items:center;gap:.4rem;padding-bottom:.4rem">
+          <input type="checkbox" id="m-pub" style="width:auto"> <label style="margin:0">PUBLISH ROOM DETAILS NOW</label></div>
+        <button class="btn btn-primary" id="m-create">PUBLISH MATCH</button>
+      </div></div>`;
+    $('#m-create', el).addEventListener('click', async () => {
+      try {
+        const d = await api('/api/matches', { method: 'POST', body: {
+          tournament_name: $('#m-tour', el).value, match_date: $('#m-date', el).value, match_time: $('#m-time', el).value,
+          room_id: $('#m-room', el).value, room_password: $('#m-pass', el).value, room_published: $('#m-pub', el).checked,
+        } });
+        toast(d.message, 'success');
+        modMatches(el);
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  });
+
+  $$('button[data-mroom]', el).forEach((b) => b.addEventListener('click', async () => {
+    const m = b.dataset.mroom;
+    try {
+      const d = await api(`/api/matches/${m}`, { method: 'PATCH', body: {
+        room_id: $(`#mr-id-${m}`, el).value, room_password: $(`#mr-pass-${m}`, el).value,
+        room_published: $(`#mr-pub-${m}`, el).checked, status: $(`#mr-status-${m}`, el).value,
+      } });
+      toast(d.message, 'success');
+      modMatches(el);
+    } catch (err) { toast(err.message, 'error'); }
+  }));
+
+  $$('button[data-mresult]', el).forEach((b) => b.addEventListener('click', async () => {
+    const m = b.dataset.mresult;
+    const teamSel = $(`#mrt-${m}`, el);
+    if (!teamSel || !teamSel.value) { toast('No teams registered for this match.', 'error'); return; }
+    try {
+      const d = await api(`/api/matches/${m}/results`, { method: 'POST', body: {
+        team_id: Number(teamSel.value), kills: Number($(`#mrk-${m}`, el).value), position: Number($(`#mrp-${m}`, el).value),
+      } });
+      toast(d.message, 'success');
+      modMatches(el);
+    } catch (err) { toast(err.message, 'error'); }
+  }));
 }
 
 /* ================= profile ================= */
