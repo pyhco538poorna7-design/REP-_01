@@ -213,7 +213,7 @@ function renderNav() {
   const items = visibleNav();
   $('#main-nav').innerHTML = items.map((n) =>
     `<button class="nav-tab" data-hash="${n.hash}">${n.icon} ${n.label}</button>`).join('');
-  $('#mobile-nav').innerHTML = items.slice(0, 5).map((n) =>
+  $('#mobile-nav').innerHTML = items.map((n) =>
     `<button class="nav-tab" data-hash="${n.hash}"><span style="font-size:1.1rem">${n.icon}</span>${n.label}</button>`).join('');
   $$('.nav-tab').forEach((b) => b.addEventListener('click', () => { location.hash = b.dataset.hash; }));
   $('#user-name').textContent = ME.display_name;
@@ -260,6 +260,8 @@ async function route() {
   const hash = location.hash || '#/dashboard';
   renderNav();
   $$('.nav-tab').forEach((b) => b.classList.toggle('active', hash.startsWith(b.dataset.hash)));
+  const activeTab = $('#mobile-nav .nav-tab.active');
+  if (activeTab && activeTab.scrollIntoView) activeTab.scrollIntoView({ inline: 'center', block: 'nearest' });
   const view = $('#view');
   const parts = hash.slice(2).split('/');
   try {
@@ -1031,7 +1033,28 @@ async function adminOverview(el) {
       ['🔨', o.auctions, 'Auctions'], ['🔴', o.live_auctions, 'Live Auctions'], ['⚔️', o.matches, 'Matches'], ['📅', o.upcoming_matches, 'Upcoming Matches'],
       ['⏳', o.pending_player_regs, 'Pending Auction Registrations'], ['✉️', o.pending_manager_regs, 'Pending Manager Registrations']]
       .map(([ic, v, l]) => `<div class="stat-tile"><div class="stat-icon">${ic}</div><div class="stat-value">${v}</div><div class="stat-label">${l}</div></div>`).join('')}
+  </div>
+  <div class="card" style="margin-top:1rem"><div class="card-title">💾 DATABASE BACKUP — DO THIS BEFORE ANY UPDATE 🚀</div>
+    <p class="hint" style="margin:.2rem 0 .8rem">Downloads a full copy of every account, team, auction, match result and chat. After a platform reset or redeploy, restore this file and everyone is back in seconds.</p>
+    <div class="inline-actions" style="flex-wrap:wrap">
+      <a class="btn btn-primary btn-sm" href="/api/backup" download>⬇ BACKUP NOW</a>
+      <input type="file" id="restore-file" accept="application/json" hidden>
+      <button class="btn btn-danger btn-sm" id="restore-btn">♻ RESTORE FROM BACKUP</button>
+      <span class="hint">restore replaces ALL current data with the backup file</span>
+    </div>
   </div>`;
+  $('#restore-btn', el).addEventListener('click', () => $('#restore-file', el).click());
+  $('#restore-file', el).addEventListener('change', async () => {
+    const f = $('#restore-file', el).files[0];
+    if (!f) return;
+    if (!confirm('RESTORE will replace ALL current data with the backup file. Continue?')) return;
+    try {
+      const dump = JSON.parse(await f.text());
+      const d = await api('/api/restore', { method: 'POST', body: dump });
+      toast(d.message, 'success');
+      adminOverview(el);
+    } catch (err) { toast(err.message, 'error'); }
+  });
 }
 
 async function adminUsers(el) {

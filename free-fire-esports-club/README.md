@@ -77,6 +77,10 @@ Change these passwords before any real deployment.
 - **DC links (admin only)** — admin attaches a Discord invite link to each auction; it is visible only to participating managers, registered players and staff.
 - **Profile pictures** — every account can upload a real profile picture at registration or later from the Profile page; it appears in the nav, leaderboards and auction cards.
 
+### Data safety (backup / restore)
+- Admin panel has a **BACKUP NOW** button that downloads the whole database as a JSON file (accounts, teams, auctions, matches, chats, logs).
+- **RESTORE FROM BACKUP** uploads that file back — instantly recreating every member after a platform reset or redeploy. Backup before any update; restore takes one click.
+
 ### Other
 - Private Team Center per manager (members, roles, credits, kills, Booyahs, purchases, matches).
 - Real-time private team chat with history, timestamps and access control.
@@ -85,7 +89,7 @@ Change these passwords before any real deployment.
 
 ## Tests
 
-The end-to-end suite spawns a real server on an isolated temp database and exercises 129 checks across auth, RBAC, registration automation, auctions, credits, leaderboards, matches, video proofs, chat privacy, WebSockets, admin flows, notifications and scale:
+The end-to-end suite spawns a real server on an isolated temp database and exercises 136 checks across auth, RBAC, registration automation, auctions, credits, leaderboards, matches, video proofs, chat privacy, WebSockets, admin flows, notifications and scale:
 
 ```bash
 npm test

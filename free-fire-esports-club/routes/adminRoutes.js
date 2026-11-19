@@ -80,6 +80,46 @@ router.delete('/users/:id', adminOnly, (req, res) => {
   res.json({ message: 'User removed.' });
 });
 
+// ---------- Database backup / restore (protects data across platform resets) ----------
+const BACKUP_TABLES = ['users', 'teams', 'player_profiles', 'manager_profiles', 'team_members', 'auctions',
+  'auction_registrations', 'auction_teams', 'bids', 'auction_results', 'credit_transactions',
+  'matches', 'match_teams', 'match_results', 'messages', 'notifications', 'notification_reads',
+  'announcements', 'audit_logs', 'match_proofs'];
+
+router.get('/backup', adminOnly, (req, res) => {
+  const dump = { exported_at: new Date().toISOString(), version: 1 };
+  for (const t of BACKUP_TABLES) dump[t] = db.prepare(`SELECT * FROM ${t}`).all();
+  res.setHeader('Content-Disposition', `attachment; filename="ffclub-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json(dump);
+});
+
+router.post('/restore', adminOnly, (req, res) => {
+  const dump = req.body || {};
+  if (!Array.isArray(dump.users) || !Array.isArray(dump.teams)) {
+    return res.status(400).json({ error: 'Not a valid backup file (missing users/teams).' });
+  }
+  const restored = {};
+  db.pragma('foreign_keys = OFF');
+  const tx = db.transaction(() => {
+    for (const t of [...BACKUP_TABLES].reverse()) db.prepare(`DELETE FROM ${t}`).run();
+    for (const t of BACKUP_TABLES) {
+      const rows = dump[t] || [];
+      if (!rows.length) { restored[t] = 0; continue; }
+      const cols = Object.keys(rows[0]).filter((c) => c !== 'sessions');
+      const ins = db.prepare(`INSERT OR REPLACE INTO ${t} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`);
+      for (const row of rows) ins.run(...cols.map((c) => row[c]));
+      restored[t] = rows.length;
+    }
+  });
+  try {
+    tx();
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+  audit(req.user.id, 'db_restore', restored);
+  res.json({ message: 'Database restored. All members are back.', restored });
+});
+
 // Manager registration approvals
 router.get('/managers', adminOnly, (req, res) => {
   const rows = db.prepare(`

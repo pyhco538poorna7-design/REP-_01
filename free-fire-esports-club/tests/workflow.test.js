@@ -500,6 +500,24 @@ async function main() {
     check('100+ registered players', r.data.players >= 100, `players=${r.data.players}`);
     check('12+ teams', r.data.teams >= 12);
 
+    console.log('\n== 14. Database backup / restore ==');
+    r = await p1.req('GET', '/api/backup');
+    check('non-admin cannot download backup', r.status === 403);
+    r = await admin.req('GET', '/api/backup');
+    const dump = r.data;
+    check('backup contains all data tables', dump.users && dump.users.length > 100 && dump.teams.length >= 12 && Array.isArray(dump.messages));
+    const beforeUsers = dump.users.length;
+    r = await admin.req('POST', '/api/restore', dump);
+    check('restore accepts full backup', r.status === 200 && r.data.restored.users === beforeUsers, JSON.stringify(r.data).slice(0, 150));
+    r = await admin.req('GET', '/api/auth/me');
+    check('admin session survives restore', r.status === 200);
+    r = await admin.req('GET', '/api/overview');
+    check('player count intact after restore', r.data.players === dump.player_profiles.length, `players=${r.data.players}`);
+    r = await p1.req('GET', '/api/chat/1');
+    check('member chat readable after restore', r.status === 200);
+    r = await mod.req('POST', '/api/restore', { users: [], teams: [] });
+    check('MOD cannot restore database', r.status === 403);
+
   } finally {
     server.kill();
     fs.rmSync(tmp, { recursive: true, force: true });
