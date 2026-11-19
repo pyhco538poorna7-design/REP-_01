@@ -663,8 +663,9 @@ async function viewMatches(view) {
           <div class="hint">📅 ${fmtDate(m.match_date)} · 🕕 ${fmtTime(m.match_time)}</div></div>
         ${statusTag(m.status)}
       </div>
-      <div style="margin:.7rem 0"><span class="hint">PARTICIPATING TEAMS:</span>
-        <div style="margin-top:.3rem">${m.teams.map((t) => `${logoChip(t.logo)}<span style="margin-right:.8rem">${esc(t.name)}</span>`).join('') || '<span class="hint">No teams registered yet</span>'}</div>
+      <div style="margin:.7rem 0"><span class="hint">🏠 ROOM — ${m.teams.length}/12 TEAMS · ${m.teams.reduce((a, t) => a + (t.member_count || 0), 0)}/48 PLAYERS:</span>
+        <div style="margin-top:.3rem">${m.teams.map((t) => `${logoChip(t.logo)}<span style="margin-right:.8rem">${esc(t.name)} <em class="hint">(${t.member_count || 0}p)</em></span>`).join('') || '<span class="hint">No teams registered yet</span>'}</div>
+        ${m.teams.length >= 12 ? '<span class="badge-tag tag-rejected">ROOM FULL</span>' : '<span class="hint">' + (12 - m.teams.length) + ' team slots left</span>'}
       </div>
       ${m.results.length ? `<div class="hint">RESULTS:</div>${m.results.map((r) => `
         <div style="display:flex;justify-content:space-between;padding:.2rem 0">
@@ -1242,6 +1243,10 @@ async function modMatches(el) {
           <input type="checkbox" id="mr-pub-${m.id}" style="width:auto" ${m.room_published ? 'checked' : ''}>
           <label style="margin:0">PUBLISH TO TEAMS</label></div>
         <button class="btn btn-primary btn-sm" data-mroom="${m.id}">💾 SAVE ROOM INFO</button>
+      </div>
+      <div class="card-title" style="margin:.8rem 0 .4rem">🏠 ROOM TEAM LIST (${m.teams.length}/12 teams · ${m.teams.reduce((a, t) => a + (t.member_count || 0), 0)}/48 players)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.4rem">
+        ${m.teams.map((t) => `<span class="tag-tint">${logoChip(t.logo)}${esc(t.name)} <strong>(${t.member_count || 0}p)</strong></span>`).join('') || '<span class="hint">Room empty — managers register their team from the Matches tab.</span>'}
       </div>
       <div class="card-title" style="margin:.8rem 0 .4rem">🏆 POST MATCH RESULTS</div>
       ${m.results.length ? m.results.map((r) => `

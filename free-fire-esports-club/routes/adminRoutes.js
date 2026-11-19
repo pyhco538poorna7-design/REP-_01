@@ -194,6 +194,7 @@ router.post('/teams/:id/members', requireRole('ADMIN'), (req, res) => {
   const player = db.prepare(`SELECT u.id, u.display_name, p.team_id FROM users u JOIN player_profiles p ON p.user_id = u.id WHERE u.id = ? AND u.role = 'PLAYER'`).get(player_user_id);
   if (!player) return res.status(404).json({ error: 'Player not found.' });
   if (player.team_id) return res.status(409).json({ error: 'Player is already on a team.' });
+  if (db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE team_id = ?').get(team.id).c >= 4) return res.status(409).json({ error: 'Team roster is full (4 players max).' });
   db.prepare('INSERT INTO team_members (team_id, player_user_id, source) VALUES (?,?,?)').run(team.id, player.id, 'admin');
   db.prepare('UPDATE player_profiles SET team_id = ? WHERE user_id = ?').run(team.id, player.id);
   audit(req.user.id, 'team_member_add', { team: team.name, player: player.display_name });

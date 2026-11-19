@@ -55,6 +55,11 @@ Change these passwords before any real deployment.
 - Held (winning) bids reduce available credits so managers cannot over-commit.
 - Full transaction history per auction.
 
+### Room rules (Free Fire format)
+- **Squad size: max 4 players per team.** Enforced at auction bidding, purchases, and admin assignment — a full squad must release a player before adding another.
+- **Match room: max 12 teams / 48 players.** Managers register their team name for a match; the 13th team is rejected. Everyone sees the room's team list with player counts and remaining slots.
+- **MOD console** shows the room's team list (with squad sizes), so MODs know exactly who is entering the room before posting results.
+
 ### Matches & room security
 - MOD/ADMIN create matches (tournament, date, time, room ID, room password, status).
 - Room credentials are visible **only** to participating teams' managers and members, plus ADMIN/MOD.
@@ -80,7 +85,7 @@ Change these passwords before any real deployment.
 
 ## Tests
 
-The end-to-end suite spawns a real server on an isolated temp database and exercises 120 checks across auth, RBAC, registration automation, auctions, credits, leaderboards, matches, video proofs, chat privacy, WebSockets, admin flows, notifications and scale:
+The end-to-end suite spawns a real server on an isolated temp database and exercises 129 checks across auth, RBAC, registration automation, auctions, credits, leaderboards, matches, video proofs, chat privacy, WebSockets, admin flows, notifications and scale:
 
 ```bash
 npm test

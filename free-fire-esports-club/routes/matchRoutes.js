@@ -10,6 +10,10 @@ const { getTeamForUser } = require('./auctionRoutes');
 const router = express.Router();
 
 const DATA_DIR = process.env.FF_DATA_DIR || path.join(__dirname, '..', 'data');
+
+const MAX_SQUAD = 4;
+const MAX_ROOM_TEAMS = 12;
+const MAX_ROOM_PLAYERS = MAX_ROOM_TEAMS * MAX_SQUAD;
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -29,7 +33,7 @@ function canSeeRoom(user, matchId) {
 
 function serializeMatch(m, user) {
   const teams = db.prepare(`
-    SELECT mt.team_id, t.name, t.logo FROM match_teams mt JOIN teams t ON t.id = mt.team_id
+    SELECT mt.team_id, t.name, t.logo, (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = mt.team_id) AS member_count FROM match_teams mt JOIN teams t ON t.id = mt.team_id
     WHERE mt.match_id = ? ORDER BY t.name`).all(m.id);
   const results = db.prepare(`
     SELECT mr.team_id, mr.kills, mr.position, t.name, t.logo FROM match_results mr
@@ -116,6 +120,10 @@ router.post('/matches/:id/register', requireRole('MANAGER', 'ADMIN'), (req, res)
   if (!team) return res.status(403).json({ error: 'You do not manage a registered team.' });
   const existing = db.prepare('SELECT id FROM match_teams WHERE match_id = ? AND team_id = ?').get(m.id, team.id);
   if (existing) return res.status(409).json({ error: 'Your team is already registered for this match.' });
+  const teamCount = db.prepare('SELECT COUNT(*) AS c FROM match_teams WHERE match_id = ?').get(m.id).c;
+  if (teamCount >= MAX_ROOM_TEAMS) return res.status(409).json({ error: `Room is full — max ${MAX_ROOM_TEAMS} teams (${MAX_ROOM_PLAYERS} players) per match.` });
+  const squadCount = db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE team_id = ?').get(team.id).c;
+  if (squadCount > MAX_SQUAD) return res.status(400).json({ error: `Your squad has ${squadCount} players — max ${MAX_SQUAD} per team in a room. Trim your lineup first.` });
   db.prepare('INSERT INTO match_teams (match_id, team_id) VALUES (?,?)').run(m.id, team.id);
   audit(req.user.id, 'match_register', { match_id: m.id, team_id: team.id });
   notify(req.user.id, 'match', 'Match registration confirmed', `${team.name} is registered for ${m.tournament_name} (${m.match_date} ${m.match_time}).`);

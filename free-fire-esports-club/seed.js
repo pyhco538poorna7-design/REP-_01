@@ -117,7 +117,7 @@ function main() {
     // ---- Assign players to teams, derive stats from match records ----
     const updPlayer = db.prepare('UPDATE player_profiles SET game_id=?, roles=?, kills=?, booyahs=?, matches=?, team_id=? WHERE user_id=?');
     let idx = 0;
-    const perTeam = 8;
+    const perTeam = 3;
     teamIds.forEach((tid) => {
       for (let k = 0; k < perTeam; k++) {
         const p = freeAgents[idx++];

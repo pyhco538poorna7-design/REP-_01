@@ -7,6 +7,7 @@ const { broadcastToChannel } = require('../ws');
 const router = express.Router();
 const MIN_BID = 100;
 const MIN_INCREMENT = 10;
+const MAX_SQUAD = 4;
 const VALID_ROLES = ['Rusher', 'Support', 'Sniper', 'IGL', 'Entry Fragger', 'Assaulter'];
 
 function getTeamForUser(userId) {
@@ -293,6 +294,8 @@ router.post('/auctions/:id/bid', requireRole('MANAGER', 'ADMIN'), (req, res) => 
 
   const at = db.prepare('SELECT * FROM auction_teams WHERE auction_id = ? AND team_id = ?').get(auction.id, team.id);
   if (!at) return res.status(403).json({ error: 'Your team has no budget ledger for this auction.' });
+  const rosterCount = db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE team_id = ?').get(team.id).c;
+  if (rosterCount >= MAX_SQUAD) return res.status(400).json({ error: `Your squad is full (max ${MAX_SQUAD} players). Release a player before bidding again.` });
 
   const top = highestBid(auction.id, player_id);
   if (top && top.team_id === team.id) return res.status(400).json({ error: 'You already hold the highest bid.' });
@@ -326,6 +329,9 @@ router.post('/auctions/:id/sold', requireRole('ADMIN'), (req, res) => {
 
   const player = db.prepare('SELECT display_name FROM users WHERE id = ?').get(player_id);
   const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(top.team_id);
+  if (db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE team_id = ?').get(team.id).c >= MAX_SQUAD) {
+    return res.status(400).json({ error: `${team.name} squad is full (max ${MAX_SQUAD} players).` });
+  }
   const tx = db.transaction(() => {
     db.prepare('INSERT INTO auction_results (auction_id, player_user_id, team_id, price, status) VALUES (?,?,?,?,?)')
       .run(auction.id, player_id, team.id, top.amount, 'SOLD');

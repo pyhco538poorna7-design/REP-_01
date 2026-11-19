@@ -239,6 +239,11 @@ async function main() {
     check('sold player moved to winning team', r.data.user.team && r.data.user.team.name === 'Nova Strike', JSON.stringify(r.data.user.team));
     r = await mgr2.req('POST', `/api/auctions/${auctionId}/bid`, { player_id: reg.player_id, amount: 600 });
     check('duplicate purchase prevented', r.status === 409);
+    r = await mgr2.req('GET', `/api/auctions/${auctionId}`);
+    const afterSold = r.data.players.find((p) => p.reg_status === 'approved' && p.username === 'player001');
+    r = await mgr2.req('POST', `/api/auctions/${auctionId}/bid`, { player_id: afterSold.player_id, amount: 200 });
+    check('squad cap: full team cannot bid', r.status === 400, JSON.stringify(r.data));
+    check('squad cap message mentions 4 players', /4 players/.test(r.data.error || ''));
     r = await mgr2.req('GET', `/api/auctions/${auctionId}/transactions`);
     check('purchase transaction recorded', r.data.transactions.some((t) => t.type === 'purchase' && t.amount === -510));
 
@@ -343,6 +348,47 @@ async function main() {
     check('duplicate proof blocked while verified', r.status === 409);
     r = await mgr1.req('GET', '/api/notifications');
     check('manager notified of proof verification', r.data.notifications.some((n) => /Proof verified/.test(n.title)));
+
+    console.log('\n== 7c. Room limits (12 teams / 48 players, squads of 4) ==');
+    r = await mgr1.req('GET', `/api/matches/${matchId}`);
+    m = r.data.match;
+    check('match teams include member counts', m.teams.length >= 1 && typeof m.teams[0].member_count === 'number', JSON.stringify(m.teams[0]));
+    check('squads seeded with max 4 players', m.teams.every((t) => t.member_count <= 4));
+    r = await mgr1.req('GET', '/api/leaderboards/kills');
+    check('team players still have stats after squad change', r.data.leaderboard.length > 0);
+
+    r = await mod.req('POST', '/api/matches', {
+      tournament_name: 'Full Room Test', match_date: '2025-12-28', match_time: '20:00',
+      room_id: 'R-48', room_password: 'pw', room_published: false,
+    });
+    const fullMatchId = r.data.match_id;
+    const fillerManagers = [];
+    for (let i = 0; i < 10; i++) {
+      const c = client();
+      const uname = `roommgr${i}`;
+      const reg = await c.req('POST', '/api/auth/register', {
+        username: uname, password: 'secret1', role: 'MANAGER', team_name: `Room Squad ${i + 1}`, contact: '',
+      });
+      if (reg.status !== 201) { console.log('  (filler register failed:', JSON.stringify(reg.data), ')'); continue; }
+      await c.req('POST', '/api/auth/login', L(uname, 'secret1'));
+      fillerManagers.push(c);
+    }
+    check('10 filler managers auto-created with teams', fillerManagers.length === 10);
+    const fx = client();
+    await fx.req('POST', '/api/auth/login', L('roommgr0', 'secret1'));
+    let fullReached = false, blockedOnce = false, registered = 0;
+    const registrars = [mgr1, mgr2, newManager, admin, ...fillerManagers, fx];
+    for (const c of registrars) {
+      const rr = await c.req('POST', `/api/matches/${fullMatchId}/register`);
+      if (rr.status === 201) registered++;
+      else if (/Room is full/.test(rr.data.error || '')) { blockedOnce = true; break; }
+      else console.log('  (register resp:', rr.status, JSON.stringify(rr.data), ')');
+    }
+    check('12 teams fill the room', registered === 12, `registered=${registered}`);
+    check('room rejects the 13th team', blockedOnce, 'full-room rejection not triggered');
+    const fxReg = await fx.req('GET', '/api/matches');
+    const fxMatch = fxReg.data.matches.find((x) => x.id === fullMatchId);
+    check('room shows capacity data', fxMatch.teams.length === 12 && fxMatch.teams.every((t) => typeof t.member_count === 'number'));
 
     console.log('\n== 8. Team Center privacy + chat ==');
     r = await mgr1.req('GET', '/api/teams/1');

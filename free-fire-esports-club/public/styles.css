@@ -228,6 +228,7 @@ tbody tr:hover { background: rgba(255, 122, 26, .04); }
 .logo-upload-box.has-logo img, .logo-upload-box img { max-height: 56px; max-width: 100%; border-radius: 8px; object-fit: contain; }
 .logo-upload-box.avatar-upload { width: 84px; height: 84px; min-height: 84px; border-radius: 50%; margin: .4rem auto 0; text-align: center; }
 .tag-verified { color: var(--green); border-color: rgba(45, 217, 124, .5); background: rgba(45, 217, 124, .08); }
+.tag-tint { display: inline-flex; align-items: center; gap: .25rem; padding: .18rem .6rem; border-radius: 999px; border: 1px solid var(--border-lit); background: var(--bg-2); font-size: .74rem; }
 .avatar-sm {
   width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   background: var(--bg-3); border: 1px solid var(--border-lit); font-size: .72rem; font-weight: 700;
