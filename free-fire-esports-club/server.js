@@ -3,11 +3,13 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const db = require('./db');
-if (!db.prepare('SELECT COUNT(*) AS c FROM users').get().c) {
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+if (!db.prepare('SELECT id FROM users WHERE username = ?').get(ADMIN_USERNAME)) {
   const bcrypt = require('bcryptjs');
-  db.prepare("INSERT INTO users (username, password_hash, role, display_name) VALUES ('admin', ?, 'ADMIN', 'Admin')")
-    .run(bcrypt.hashSync('admin123', 10));
-  console.log('Fresh database — created initial ADMIN account (admin / admin123). Change this password immediately.');
+  db.prepare('INSERT INTO users (username, password_hash, role, display_name) VALUES (?,?,?,?)')
+    .run(ADMIN_USERNAME, bcrypt.hashSync(ADMIN_PASSWORD, 10), 'ADMIN', 'Admin');
+  console.log('Fresh database — initial ADMIN account created. Change this password immediately.');
 }
 const { attachUser } = require('./auth');
 const { handleUpgrade } = require('./ws');

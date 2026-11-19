@@ -29,7 +29,8 @@ function main() {
   if (userCount > 1) { console.log('Database already seeded.'); return; }
 
   const hash = (p) => bcrypt.hashSync(p, 10);
-  const adminHash = hash('admin123');
+  const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim();
+  const adminHash = hash(process.env.ADMIN_PASSWORD || 'admin123');
   const modHash = hash('mod123');
   const managerHash = hash('manager123');
   const playerHash = hash('player123');
@@ -48,10 +49,10 @@ function main() {
 
   const seedAll = db.transaction(() => {
     // ---- Admin & MOD ----
-    const existingAdmin = db.prepare("SELECT id, role, status FROM users WHERE username = 'admin'").get();
+    const existingAdmin = db.prepare('SELECT id, role, status FROM users WHERE username = ?').get(adminUsername);
     const admin = existingAdmin && existingAdmin.role === 'ADMIN' && existingAdmin.status === 'active'
       ? existingAdmin.id
-      : db.prepare("INSERT OR REPLACE INTO users (username, password_hash, role, display_name, status) VALUES ('admin', ?, 'ADMIN', 'Club Owner', 'active')").run(adminHash).lastInsertRowid;
+      : db.prepare("INSERT OR REPLACE INTO users (username, password_hash, role, display_name, status) VALUES (?,?,'ADMIN','Club Owner','active')").run(adminUsername, adminHash).lastInsertRowid;
     const mod = insUser.run('mod', modHash, 'MOD', 'Head Moderator').lastInsertRowid;
 
     // ---- Teams + Managers ----
