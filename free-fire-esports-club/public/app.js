@@ -692,6 +692,7 @@ async function viewMatches(view) {
   view.innerHTML = `
     <div class="page-head"><h2 class="page-title">⚔️ ESPORTS <span class="accent">MATCHES</span></h2>
       ${canModerate ? '<button class="btn btn-primary" id="new-match-btn">+ SCHEDULE MATCH</button>' : ''}</div>
+    ${!isManager && !canModerate ? '<div class="hint" style="margin:-.3rem 0 .8rem">🔒 Only team <strong>MANAGERS</strong> can register their team and claim a room slot (max 4 players per squad · 12 teams / 48 players per room).</div>' : ''}
     <div id="new-match-wrap"></div>
     <div class="card-title" style="margin:.5rem 0 .8rem">📅 UPCOMING</div>
     <div class="grid grid-2">${upcoming.map(matchCard).join('') || '<div class="empty-state">No upcoming matches scheduled.</div>'}</div>

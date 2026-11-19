@@ -306,6 +306,10 @@ async function main() {
     check('manager registers team for match', r.status === 201);
     r = await mgr1.req('POST', `/api/matches/${matchId}/register`);
     check('duplicate match registration blocked', r.status === 409);
+    r = await p1.req('POST', `/api/matches/${matchId}/register`);
+    check('player cannot register a team for a match', r.status === 403, JSON.stringify(r.data));
+    r = await mod.req('POST', `/api/matches/${matchId}/register`);
+    check('MOD cannot register a team for a match', r.status === 403, JSON.stringify(r.data));
     r = await p1.req('GET', '/api/matches');
     m = r.data.matches.find((x) => x.id === matchId);
     check('room still hidden before publish', m.room_id === null);
