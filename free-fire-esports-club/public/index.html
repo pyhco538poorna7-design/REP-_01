@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FF Esports Club — Management Platform</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#ff7a1a">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+</head>
+<body>
+
+<!-- ============ AUTH SCREEN ============ -->
+<div id="auth-screen" class="auth-screen hidden">
+  <div class="auth-bg-grid"></div>
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="logo-flame">🔥</span>
+      <h1>FF <span class="grad-text">ESPORTS</span> CLUB</h1>
+      <p class="auth-sub">Tournament &amp; Auction Management Platform</p>
+    </div>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">LOG IN</button>
+      <button id="tab-register" class="auth-tab">REGISTER</button>
+    </div>
+    <form id="login-form" class="auth-form">
+      <label>USERNAME<input type="text" name="username" autocomplete="username" required></label>
+      <label>PASSWORD<input type="password" name="password" autocomplete="current-password" required></label>
+      <button type="submit" class="btn btn-primary btn-block">ENTER ARENA <span class="btn-arrow">→</span></button>
+      <div id="login-error" class="form-error"></div>
+    </form>
+    <form id="register-form" class="auth-form hidden">
+      <div class="role-picker">
+        <button type="button" class="role-btn active" data-role="PLAYER">🎮 PLAYER</button>
+        <button type="button" class="role-btn" data-role="MANAGER">📋 MANAGER</button>
+      </div>
+      <label>USERNAME<input type="text" name="username" autocomplete="username" required></label>
+      <label>PASSWORD<input type="password" name="password" autocomplete="new-password" required minlength="6"></label>
+      <label class="file-label">PROFILE PICTURE (IMAGE)<input type="file" id="avatar-file" accept="image/png,image/jpeg,image/webp" hidden><div class="logo-upload-box" id="avatar-upload-box"><span id="avatar-upload-text">📁 click to upload your profile pic</span></div></label>
+      <div id="player-fields">
+        <label>FREE FIRE GAME ID<input type="text" name="game_id" placeholder="FF12345678"></label>
+        <div class="roles-label">PREFERRED ROLES <span class="hint">(pick 2–3)</span></div>
+        <div id="roles-picker" class="roles-picker"></div>
+      </div>
+      <div id="manager-fields" class="hidden">
+        <label>TEAM NAME<input type="text" name="team_name"></label>
+        <label class="file-label">TEAM LOGO (IMAGE)<input type="file" id="team-logo-file" accept="image/png,image/jpeg,image/webp" hidden><div class="logo-upload-box" id="logo-upload-box"><span id="logo-upload-text">📁 click to upload your team logo</span></div></label>
+        <label>CONTACT INFO<input type="text" name="contact" placeholder="email / discord / phone"></label>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">CREATE ACCOUNT</button>
+      <div id="register-error" class="form-error"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app" class="app hidden">
+  <header class="topbar">
+    <div class="topbar-brand" onclick="location.hash='#/dashboard'">
+      <span class="logo-flame">🔥</span>
+      <span class="brand-text">FF <span class="grad-text">ESPORTS</span></span>
+    </div>
+    <nav id="main-nav" class="main-nav"></nav>
+    <div class="topbar-right">
+      <button id="notif-bell" class="bell" title="Notifications">
+        🔔<span id="notif-badge" class="badge hidden">0</span>
+      </button>
+      <div class="user-chip" onclick="location.hash='#/profile'">
+        <span id="user-avatar" class="user-avatar"></span>
+        <span class="user-meta"><strong id="user-name"></strong><small id="user-role"></small></span>
+      </div>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">LOG OUT</button>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav id="mobile-nav" class="mobile-nav"></nav>
+</div>
+
+<!-- Notifications drawer -->
+<div id="notif-drawer" class="drawer hidden">
+  <div class="drawer-head">
+    <h3>🔔 NOTIFICATIONS</h3>
+    <div>
+      <button id="notif-read-all" class="btn btn-ghost btn-sm">MARK ALL READ</button>
+      <button id="notif-close" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+  </div>
+  <div id="notif-list" class="notif-list"></div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
